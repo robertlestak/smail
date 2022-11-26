@@ -7,10 +7,19 @@ metadata:
 spec:
   hosts:
   - "smail.lestak.sh"
+  - "smail.sh"
   gateways:
   - istio-system/ingressgateway
   - istio-system/ingressgateway-ext
   http:
+  - match:
+    - uri:
+        prefix: "/js/"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: smail-js
   - match:
     - uri:
         prefix: "/"
