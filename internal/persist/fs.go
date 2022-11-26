@@ -52,11 +52,21 @@ func (d *FS) MsgDirBytesUsed(id string) (int64, error) {
 	})
 	l.Debug("starting")
 	p := path.Join(d.DataDir, d.MsgDir(), id)
-	fi, err := os.Stat(p)
+	// get cumulative size of all files in the dir
+	f, err := os.Open(p)
 	if err != nil {
 		return 0, err
 	}
-	return fi.Size(), nil
+	defer f.Close()
+	fi, err := f.Readdir(-1)
+	if err != nil {
+		return 0, err
+	}
+	var size int64
+	for _, f := range fi {
+		size += f.Size()
+	}
+	return size, nil
 }
 
 func (d *FS) Store(dir string, id string, data any) error {
