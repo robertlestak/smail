@@ -1,0 +1,19 @@
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: smail
+  namespace: smail
+spec:
+  hosts:
+  - "smail.lestak.sh"
+  gateways:
+  - istio-system/ingressgateway
+  - istio-system/ingressgateway-ext
+  http:
+  - match:
+    - uri:
+        prefix: "/"
+    route:
+    - destination:
+        host: smail

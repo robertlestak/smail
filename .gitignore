@@ -1,0 +1,5 @@
+.env
+data
+*.swp
+.DS_Store
+bin

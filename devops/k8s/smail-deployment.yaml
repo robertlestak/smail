@@ -1,0 +1,55 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smail
+  namespace: smail
+  labels:
+    app: smail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smail
+  template:
+    metadata:
+      labels:
+        app: smail
+    spec:
+      containers:
+      - name: smail
+        image: registry.lestak.sh/smail:latest
+        args:
+        - server
+        envFrom:
+        - secretRef:
+            name: smail
+        env:
+        - name: DATA_DIR
+          value: /data
+        ports:
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            port: 8080
+            path: /health
+        readinessProbe:
+          httpGet:
+            port: 8080
+            path: /health
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: data
