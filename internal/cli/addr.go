@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -24,9 +26,14 @@ func cmdAddrNew() error {
 	l.Debug("starting")
 	newAddrFlagSet := flag.NewFlagSet("new", flag.ExitOnError)
 	name := newAddrFlagSet.String("name", "", "name of the address")
+	server := newAddrFlagSet.String("server", "", "server to query")
 	domain := newAddrFlagSet.String("domain", "", "domain of the address")
 	pubKeyPath := newAddrFlagSet.String("pubkey-path", "", "path to the public key")
 	pubKeyBase64 := newAddrFlagSet.String("pubkey-base64", "", "base64 encoded public key")
+	privKeyPath := newAddrFlagSet.String("privkey-path", "", "path to the private key")
+	privKeyBase64 := newAddrFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	output := newAddrFlagSet.String("output", "json", "output format")
+	outputPath := newAddrFlagSet.String("output-path", "-", "output path")
 	newAddrFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"name":          *name,
@@ -34,6 +41,28 @@ func cmdAddrNew() error {
 		"pubkey-path":   *pubKeyPath,
 		"pubkey-base64": *pubKeyBase64,
 	}).Debug("parsed flags")
+	var privKeyBytes []byte
+	if *privKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	} else if *privKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	} else {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
 	var pubKeyBytes []byte
 	if *pubKeyPath != "" {
 		// read pubkey from file
@@ -52,7 +81,9 @@ func cmdAddrNew() error {
 	} else {
 		return errors.New("pubkey is required")
 	}
-	addr, err := address.NewAddress(
+	addr, err := address.CreateAddress(
+		*server,
+		sig,
 		*name,
 		*domain,
 		pubKeyBytes,
@@ -60,11 +91,7 @@ func cmdAddrNew() error {
 	if err != nil {
 		return err
 	}
-	l.WithFields(log.Fields{
-		"address": addr,
-		"id":      addr.ID,
-	}).Debug("created address")
-	return nil
+	return outputData(addr, *output, *outputPath)
 }
 
 func outputData(data any, format string, location string) error {
@@ -106,10 +133,41 @@ func cmdAddrList() error {
 	listAddrFlagSet := flag.NewFlagSet("list", flag.ExitOnError)
 	output := listAddrFlagSet.String("output", "json", "output format")
 	outputPath := listAddrFlagSet.String("output-path", "-", "output path")
+	server := listAddrFlagSet.String("server", "", "server to query")
 	page := listAddrFlagSet.Int("page", 0, "page number")
 	pageSize := listAddrFlagSet.Int("page-size", 10, "page size")
+	privKeyPath := listAddrFlagSet.String("privkey-path", "", "path to the private key")
+	privKeyBase64 := listAddrFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	listAddrFlagSet.Parse(os.Args[3:])
-	addrs, err := address.ListLocalAddresses(*page, *pageSize)
+	var privKeyBytes []byte
+	if *privKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	} else if *privKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	} else {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	if *server == "" {
+		return errors.New("server is required")
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	addrs, err := address.ListAddresses(*server, sig, *page, *pageSize)
 	if err != nil {
 		return err
 	}
@@ -124,12 +182,43 @@ func cmdAddrDelete() error {
 	l.Debug("starting")
 	deleteAddrFlagSet := flag.NewFlagSet("delete", flag.ExitOnError)
 	id := deleteAddrFlagSet.String("id", "", "id of the address")
+	server := deleteAddrFlagSet.String("server", "", "server to query")
+	privKeyPath := deleteAddrFlagSet.String("privkey-path", "", "path to the private key")
+	privKeyBase64 := deleteAddrFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	deleteAddrFlagSet.Parse(os.Args[3:])
 	l.WithField("id", *id).Debug("parsed flags")
 	if *id == "" {
 		return errors.New("id is required")
 	}
-	return address.DeleteLocalAddressByID(*id)
+	var privKeyBytes []byte
+	if *privKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	} else if *privKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	} else {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	if *server == "" {
+		return errors.New("server is required")
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	return address.DeleteAddress(*server, sig, *id)
 }
 
 func cmdAddrUpdate() error {
@@ -140,8 +229,11 @@ func cmdAddrUpdate() error {
 	l.Debug("starting")
 	updateAddrFlagSet := flag.NewFlagSet("update", flag.ExitOnError)
 	id := updateAddrFlagSet.String("id", "", "id of the address")
+	server := updateAddrFlagSet.String("server", "", "server to query")
 	pubKeyPath := updateAddrFlagSet.String("pubkey-path", "", "path to the public key")
 	pubKeyBase64 := updateAddrFlagSet.String("pubkey-base64", "", "base64 encoded public key")
+	privKeyPath := updateAddrFlagSet.String("privkey-path", "", "path to the private key")
+	privKeyBase64 := updateAddrFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	updateAddrFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"id":            *id,
@@ -169,9 +261,57 @@ func cmdAddrUpdate() error {
 	} else {
 		return errors.New("pubkey is required")
 	}
-	if err := address.UpdateAddressPubKey(*id, pubKeyBytes); err != nil {
+	l.WithField("id", *id).Debug("parsed flags")
+	if *id == "" {
+		return errors.New("id is required")
+	}
+	var privKeyBytes []byte
+	if *privKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	} else if *privKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	} else {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
 		return err
 	}
+	if *server == "" {
+		return errors.New("server is required")
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	var a address.Address
+	a.ID = *id
+	a.PubKey = pubKeyBytes
+	jd, err := json.Marshal(a)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("PUT", *server+"/address/"+*id+"/pubkey", bytes.NewBuffer(jd))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", sig)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 	return nil
 }
 

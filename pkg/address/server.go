@@ -1,11 +1,13 @@
 package address
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/robertlestak/smail/internal/encrypt"
@@ -316,4 +318,88 @@ func HandleDeletePrivKeyByID(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(PrivKeys, id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func ListAddresses(server string, sig string, page int, pageSize int) ([]Address, error) {
+	l := log.WithFields(log.Fields{
+		"app": "address",
+		"fn":  "ListAddresses",
+	})
+	l.Debug("starting")
+	var addresses []Address
+	req, err := http.NewRequest("GET", server+"/addresses", nil)
+	if err != nil {
+		return addresses, err
+	}
+	q := req.URL.Query()
+	if page > 0 {
+		q.Add("page", strconv.Itoa(page))
+	}
+	if pageSize > 0 {
+		q.Add("page_size", strconv.Itoa(pageSize))
+	}
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", sig)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return addresses, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&addresses); err != nil {
+		return addresses, err
+	}
+	return addresses, nil
+}
+
+func DeleteAddress(server string, id string, sig string) error {
+	l := log.WithFields(log.Fields{
+		"app": "address",
+		"fn":  "DeleteAddress",
+	})
+	l.Debug("starting")
+	req, err := http.NewRequest("DELETE", server+"/address/"+id, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", sig)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func CreateAddress(server string, sig string, name string, domain string, pubKeyBytes []byte) (Address, error) {
+	l := log.WithFields(log.Fields{
+		"app": "address",
+		"fn":  "CreateAddress",
+	})
+	l.Debug("starting")
+	addr := Address{
+		Name:   name,
+		Domain: domain,
+		PubKey: pubKeyBytes,
+	}
+	b, err := json.Marshal(addr)
+	if err != nil {
+		return addr, err
+	}
+	req, err := http.NewRequest("POST", server+"/address", bytes.NewBuffer(b))
+	if err != nil {
+		return addr, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", sig)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return addr, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&addr); err != nil {
+		return addr, err
+	}
+	return addr, nil
 }
