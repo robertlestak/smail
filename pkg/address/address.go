@@ -279,3 +279,16 @@ func LoadPrivKey(id string, privKeyBytes []byte) error {
 	PrivKeys[id] = privKeyBytes
 	return nil
 }
+
+func GetLocalBytesUsed(id string) (int64, error) {
+	l := log.WithFields(log.Fields{
+		"app": "address",
+		"fn":  "GetLocalBytesUsed",
+	})
+	l.Debug("starting")
+	u, err := persist.DriverClient.MsgDirBytesUsed(id)
+	if err != nil {
+		return 0, err
+	}
+	return u, nil
+}

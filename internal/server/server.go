@@ -44,6 +44,7 @@ func Start(port, tlsCrtPath, tlsKeyPath string) error {
 	// Address-Authenticated Internal Routes
 	r.HandleFunc("/address/{id}/key", address.HandleLoadPrivKey).Methods("POST")
 	r.HandleFunc("/address/{id}/key", address.HandleDeletePrivKeyByID).Methods("DELETE")
+	r.HandleFunc("/address/{id}/bytes", address.HandleGetBytesUsed).Methods("GET")
 	r.HandleFunc("/address/{id}", address.HandleDeleteAddressByID).Methods("DELETE")
 	r.HandleFunc("/address/{id}/pubkey", address.HandleUpdateAddressPubKey).Methods("PUT")
 	r.HandleFunc("/message/send", smail.HandleSendMessage).Methods("POST")

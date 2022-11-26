@@ -15,6 +15,7 @@ import (
 
 	"github.com/robertlestak/smail/pkg/address"
 	"github.com/robertlestak/smail/pkg/encrypt"
+	"github.com/robertlestak/smail/pkg/smail"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -323,6 +324,91 @@ func cmdAddrUpdate() error {
 	return nil
 }
 
+func cmdAddrUsage() error {
+	l := log.WithFields(log.Fields{
+		"app": "cli",
+		"fn":  "cmdAddrUsage",
+	})
+	l.Debug("starting")
+	usageAddrFlagSet := flag.NewFlagSet("usage", flag.ExitOnError)
+	server := usageAddrFlagSet.String("server", "", "server to query")
+	addr := usageAddrFlagSet.String("addr", "", "address to query")
+	serverProto := usageAddrFlagSet.String("server-proto", "https", "server protocol")
+	privKeyPath := usageAddrFlagSet.String("privkey-path", "", "path to the private key")
+	privKeyBase64 := usageAddrFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	useDOH := usageAddrFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
+	usageAddrFlagSet.Parse(os.Args[3:])
+	l.WithFields(log.Fields{
+		"privkey-path":   *privKeyPath,
+		"privkey-base64": *privKeyBase64,
+	}).Debug("parsed flags")
+	var privKeyBytes []byte
+	if *privKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	} else if *privKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	} else {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	if *server == "" {
+		endpoint, err := smail.EndpointFromAddr(*addr, *useDOH)
+		if err != nil {
+			l.WithError(err).Error("failed to get endpoint from toaddr")
+			return err
+		}
+		*server = endpoint
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
+	}
+	if *server == "" {
+		return errors.New("server is required")
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	id := address.AddressID(*addr)
+	l.WithFields(log.Fields{
+		"id": id,
+	}).Debug("using id")
+	req, err := http.NewRequest("GET", *server+"/address/"+id+"/bytes", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", sig)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	var res int64
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return err
+	}
+	fmt.Println(res)
+	return nil
+}
+
 func cmdAddr() error {
 	l := log.WithFields(log.Fields{
 		"app": "cli",
@@ -347,6 +433,8 @@ func cmdAddr() error {
 		return cmdAddrDelete()
 	case "update":
 		return cmdAddrUpdate()
+	case "usage":
+		return cmdAddrUsage()
 	default:
 		return errors.New("invalid subcommand")
 	}

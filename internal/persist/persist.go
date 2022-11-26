@@ -16,6 +16,7 @@ type Driver interface {
 	DirList(dir string) ([]string, error)
 	Delete(dir string, id string) error
 	MsgDir() string
+	MsgDirBytesUsed(id string) (int64, error)
 	AddrDir() string
 }
 

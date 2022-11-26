@@ -45,6 +45,20 @@ func (d *FS) Init() error {
 	return nil
 }
 
+func (d *FS) MsgDirBytesUsed(id string) (int64, error) {
+	l := log.WithFields(log.Fields{
+		"app": "persist",
+		"fn":  "MsgDirBytesUsed",
+	})
+	l.Debug("starting")
+	p := path.Join(d.DataDir, d.MsgDir(), id)
+	fi, err := os.Stat(p)
+	if err != nil {
+		return 0, err
+	}
+	return fi.Size(), nil
+}
+
 func (d *FS) Store(dir string, id string, data any) error {
 	l := log.WithFields(log.Fields{
 		"app": "persist",

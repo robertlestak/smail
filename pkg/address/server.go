@@ -320,6 +320,56 @@ func HandleDeletePrivKeyByID(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func HandleGetBytesUsed(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{
+		"app": "address",
+		"fn":  "HandleGetBytesUsed",
+	})
+	l.Debug("starting")
+	vars := mux.Vars(r)
+	id := vars["id"]
+	sig, err := encrypt.ParseSignedRequest(r)
+	if err != nil {
+		l.WithError(err).Error("failed to parse signed request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
+	if err != nil {
+		l.WithError(err).Error("failed to convert bytes to public key")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	addr, err := GetByID(id)
+	if err != nil {
+		l.WithError(err).Error("failed to get address")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
+	if err != nil {
+		l.WithError(err).Error("failed to convert bytes to public key")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !sigPubKey.Equal(aPubKey) {
+		l.Error("public key mismatch")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	u, err := GetLocalBytesUsed(id)
+	if err != nil {
+		l.WithError(err).Error("failed to get local bytes used")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if err := json.NewEncoder(w).Encode(u); err != nil {
+		l.WithError(err).Error("failed to encode json")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
 func ListAddresses(server string, sig string, page int, pageSize int) ([]Address, error) {
 	l := log.WithFields(log.Fields{
 		"app": "address",
