@@ -13,8 +13,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/robertlestak/smail/internal/encrypt"
 	"github.com/robertlestak/smail/pkg/address"
+	"github.com/robertlestak/smail/pkg/encrypt"
 	log "github.com/sirupsen/logrus"
 )
 

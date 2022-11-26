@@ -10,8 +10,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
-	"github.com/robertlestak/smail/internal/encrypt"
 	"github.com/robertlestak/smail/internal/utils"
+	"github.com/robertlestak/smail/pkg/encrypt"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/robertlestak/smail/internal/encrypt"
 	"github.com/robertlestak/smail/internal/persist"
+	"github.com/robertlestak/smail/pkg/encrypt"
 	log "github.com/sirupsen/logrus"
 )
 

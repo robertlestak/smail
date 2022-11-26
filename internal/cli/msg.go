@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robertlestak/smail/internal/encrypt"
 	"github.com/robertlestak/smail/pkg/address"
+	"github.com/robertlestak/smail/pkg/encrypt"
 	"github.com/robertlestak/smail/pkg/smail"
 	log "github.com/sirupsen/logrus"
 )
