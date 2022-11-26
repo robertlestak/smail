@@ -391,9 +391,13 @@ func enpointFromDomain(domain string) (string, error) {
 	// if the domain is not found, return an error
 	// if the domain is found, return the endpoint
 	txtrecords, _ := net.LookupTXT(domain)
+	l.Debugf("txtrecords: %v", txtrecords)
 	for _, txt := range txtrecords {
+		l.Debugf("txt: %v", txt)
 		if strings.HasPrefix(txt, "smail=") {
 			endpoint = strings.TrimSpace(strings.TrimPrefix(txt, "smail="))
+			l.Debugf("found smail endpoint: %v", endpoint)
+			break
 		}
 	}
 	if endpoint == "" {
