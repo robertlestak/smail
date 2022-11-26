@@ -317,12 +317,12 @@ func (m *RawMessage) Send() error {
 	})
 	l.Debug("starting")
 	// ensure fromaddr is valid
-	fromAddr, err := address.GetByAddr(m.FromAddr)
-	if err != nil {
-		l.WithError(err).Error("failed to get fromaddr")
-		return err
-	}
-	l = l.WithField("fromAddr", fromAddr)
+	// fromAddr, err := address.GetByAddr(m.FromAddr)
+	// if err != nil {
+	// 	l.WithError(err).Error("failed to get fromaddr")
+	// 	return err
+	// }
+	// l = l.WithField("fromAddr", fromAddr)
 	totalSend := len(m.To) + len(m.CC) + len(m.BCC)
 	l = l.WithField("totalSend", totalSend)
 	l.Debug("sending message")
@@ -336,7 +336,7 @@ func (m *RawMessage) Send() error {
 		go sendMessageWorker(jobs, results)
 	}
 	tm := m
-	tm.BCC = []string{}
+	tm.BCC = nil
 	for _, to := range m.To {
 		jobs <- SendMessageJob{
 			RawMessage: tm,

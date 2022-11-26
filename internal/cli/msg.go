@@ -96,21 +96,6 @@ func cmdMsgNew() error {
 		BCC:      bcc,
 		Time:     time.Now(),
 	}
-	pk, err := encrypt.BytesToPrivKey(privKeyBytes)
-	if err != nil {
-		return err
-	}
-	addr, err := address.GetByAddr(rm.FromAddr)
-	if err != nil {
-		return err
-	}
-	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
-	if err != nil {
-		return err
-	}
-	if !pk.PublicKey.Equal(aPubKey) {
-		return errors.New("from address does not match private key")
-	}
 	if err := rm.Send(); err != nil {
 		return err
 	}
