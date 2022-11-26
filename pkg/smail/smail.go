@@ -2,6 +2,7 @@ package smail
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/likexian/doh-go"
+	"github.com/likexian/doh-go/dns"
 	"github.com/robertlestak/smail/internal/persist"
 	"github.com/robertlestak/smail/pkg/address"
 	"github.com/robertlestak/smail/pkg/encrypt"
@@ -390,7 +393,30 @@ func enpointFromDomain(domain string) (string, error) {
 	// do a DNS txt lookup for the domain
 	// if the domain is not found, return an error
 	// if the domain is found, return the endpoint
-	txtrecords, _ := net.LookupTXT(domain)
+	txtrecords, err := net.LookupTXT(domain)
+	if err != nil {
+		l.WithError(err).Error("failed to lookup txt records")
+	}
+	if len(txtrecords) == 0 {
+		// no txt records found, try DOH
+		l.Debug("no txt records found, trying DOH")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		c := doh.Use()
+		d := dns.Domain(domain)
+		rsp, err := c.Query(ctx, d, dns.TypeTXT)
+		if err != nil {
+			l.WithError(err).Error("failed to query DOH")
+			return "", err
+		}
+		if len(rsp.Answer) == 0 {
+			l.Error("no answers found")
+			return "", errors.New("no answers found")
+		}
+		for _, a := range rsp.Answer {
+			txtrecords = append(txtrecords, a.Data)
+		}
+	}
 	l.Debugf("txtrecords: %v", txtrecords)
 	for _, txt := range txtrecords {
 		l.Debugf("txt: %v", txt)
