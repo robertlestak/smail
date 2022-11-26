@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/robertlestak/smail/internal/server"
+	"github.com/robertlestak/smail/internal/smtp"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,8 +20,35 @@ func cmdServer() error {
 	port := serverCmd.String("port", "8080", "port to listen on")
 	tlsCrtPath := serverCmd.String("tls-crt", "", "path to TLS certificate")
 	tlsKeyPath := serverCmd.String("tls-key", "", "path to TLS key")
+
+	enableSmtp := serverCmd.Bool("enable-smtp", false, "enable SMTP server")
+	smtpPort := serverCmd.String("smtp-port", "2525", "port to listen on for SMTP")
+	smtpDomain := serverCmd.String("smtp-domain", "", "domain to listen on for SMTP")
+	smtpTlsCaPath := serverCmd.String("smtp-tls-ca", "", "path to TLS CA for SMTP")
+	smtpTlsCrtPath := serverCmd.String("smtp-tls-crt", "", "path to TLS certificate for SMTP")
+	smtpTlsKeyPath := serverCmd.String("smtp-tls-key", "", "path to TLS key for SMTP")
+	smtpAllowInsecureAuth := serverCmd.Bool("smtp-allow-insecure-auth", false, "allow insecure authentication for SMTP")
 	serverCmd.Parse(os.Args[2:])
-	return server.Start(*port, *tlsCrtPath, *tlsKeyPath)
+	go func() {
+		if err := server.Start(*port, *tlsCrtPath, *tlsKeyPath); err != nil {
+			l.WithError(err).Fatal("server failed")
+		}
+	}()
+	if *enableSmtp {
+		go func() {
+			if err := smtp.Start(
+				*smtpDomain,
+				*smtpPort,
+				*smtpTlsCaPath,
+				*smtpTlsCrtPath,
+				*smtpTlsKeyPath,
+				*smtpAllowInsecureAuth,
+			); err != nil {
+				l.WithError(err).Fatal("smtp server failed")
+			}
+		}()
+	}
+	select {}
 }
 
 func Start() error {

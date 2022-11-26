@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ func cmdMsgNew() error {
 	ccStr := msgFlagSet.String("cc", "", "cc addresses")
 	bccStr := msgFlagSet.String("bcc", "", "bcc addresses")
 	subject := msgFlagSet.String("subject", "", "subject")
+	attachments := msgFlagSet.String("attachments", "", "attachments")
 	body := msgFlagSet.String("body", "", "body")
 	privkeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privkeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
@@ -42,6 +44,7 @@ func cmdMsgNew() error {
 		"body":           *body,
 		"privkey-path":   *privkeyPath,
 		"privkey-base64": *privkeyBase64,
+		"attachments":    *attachments,
 	}).Debug("parsed flags")
 	if *fromAddr == "" {
 		return errors.New("from is required")
@@ -87,14 +90,30 @@ func cmdMsgNew() error {
 	if *bccStr != "" {
 		bcc = strings.Split(*bccStr, ",")
 	}
+	var attachmentsList []string
+	var attach []smail.Attachment
+	if *attachments != "" {
+		attachmentsList = strings.Split(*attachments, ",")
+		for _, a := range attachmentsList {
+			fd, err := ioutil.ReadFile(a)
+			if err != nil {
+				return err
+			}
+			attach = append(attach, smail.Attachment{
+				Name: path.Base(a),
+				Data: fd,
+			})
+		}
+	}
 	rm := &smail.RawMessage{
-		FromAddr: *fromAddr,
-		Subject:  *subject,
-		Body:     *body,
-		To:       to,
-		CC:       cc,
-		BCC:      bcc,
-		Time:     time.Now(),
+		FromAddr:    *fromAddr,
+		Subject:     *subject,
+		Body:        *body,
+		To:          to,
+		CC:          cc,
+		BCC:         bcc,
+		Attachments: attach,
+		Time:        time.Now(),
 	}
 	if err := rm.Send(); err != nil {
 		return err
