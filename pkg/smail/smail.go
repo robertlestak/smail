@@ -15,8 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/likexian/doh-go"
-	"github.com/likexian/doh-go/dns"
+	"github.com/ncruces/go-dns"
 	"github.com/robertlestak/smail/internal/persist"
 	"github.com/robertlestak/smail/pkg/address"
 	"github.com/robertlestak/smail/pkg/encrypt"
@@ -295,6 +294,11 @@ func sendMessageWorker(jobs <-chan SendMessageJob, results chan<- error) {
 			results <- err
 			continue
 		}
+		if endpoint == "" {
+			l.Error("no endpoint found")
+			results <- errors.New("no endpoint found")
+			continue
+		}
 		msg, err := j.RawMessage.CreateMessage(endpoint, j.ToAddr)
 		if err != nil {
 			l.WithError(err).Error("failed to create message")
@@ -399,23 +403,25 @@ func enpointFromDomain(domain string) (string, error) {
 	}
 	if len(txtrecords) == 0 {
 		// no txt records found, try DOH
+		dohResolver := os.Getenv("DOH_RESOLVER")
+		if dohResolver == "" {
+			dohResolver = "https://dns.google/dns-query{?dns}"
+		}
 		l.Debug("no txt records found, trying DOH")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		c := doh.Use()
-		d := dns.Domain(domain)
-		rsp, err := c.Query(ctx, d, dns.TypeTXT)
+		resolver, err := dns.NewDoHResolver(
+			dohResolver,
+			dns.DoHCache(),
+		)
 		if err != nil {
-			l.WithError(err).Error("failed to query DOH")
+			l.WithError(err).Error("failed to create doh resolver")
 			return "", err
 		}
-		if len(rsp.Answer) == 0 {
-			l.Error("no answers found")
-			return "", errors.New("no answers found")
+		records, err := resolver.LookupTXT(context.Background(), domain)
+		if err != nil {
+			l.WithError(err).Error("failed to doh lookup")
+			return "", err
 		}
-		for _, a := range rsp.Answer {
-			txtrecords = append(txtrecords, a.Data)
-		}
+		txtrecords = records
 	}
 	l.Debugf("txtrecords: %v", txtrecords)
 	for _, txt := range txtrecords {
