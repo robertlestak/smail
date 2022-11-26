@@ -27,6 +27,7 @@ func cmdAddrNew() error {
 	newAddrFlagSet := flag.NewFlagSet("new", flag.ExitOnError)
 	name := newAddrFlagSet.String("name", "", "name of the address")
 	server := newAddrFlagSet.String("server", "", "server to query")
+	serverProto := newAddrFlagSet.String("server-proto", "https", "server protocol")
 	domain := newAddrFlagSet.String("domain", "", "domain of the address")
 	pubKeyPath := newAddrFlagSet.String("pubkey-path", "", "path to the public key")
 	pubKeyBase64 := newAddrFlagSet.String("pubkey-base64", "", "base64 encoded public key")
@@ -35,6 +36,7 @@ func cmdAddrNew() error {
 	output := newAddrFlagSet.String("output", "json", "output format")
 	outputPath := newAddrFlagSet.String("output-path", "-", "output path")
 	newAddrFlagSet.Parse(os.Args[3:])
+	*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	l.WithFields(log.Fields{
 		"name":          *name,
 		"domain":        *domain,
@@ -134,6 +136,7 @@ func cmdAddrList() error {
 	output := listAddrFlagSet.String("output", "json", "output format")
 	outputPath := listAddrFlagSet.String("output-path", "-", "output path")
 	server := listAddrFlagSet.String("server", "", "server to query")
+	serverProto := listAddrFlagSet.String("server-proto", "https", "server protocol")
 	page := listAddrFlagSet.Int("page", 0, "page number")
 	pageSize := listAddrFlagSet.Int("page-size", 10, "page size")
 	privKeyPath := listAddrFlagSet.String("privkey-path", "", "path to the private key")
@@ -164,6 +167,7 @@ func cmdAddrList() error {
 	if *server == "" {
 		return errors.New("server is required")
 	}
+	*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	l.WithFields(log.Fields{
 		"server": *server,
 	}).Debug("using server")
@@ -182,6 +186,7 @@ func cmdAddrDelete() error {
 	l.Debug("starting")
 	deleteAddrFlagSet := flag.NewFlagSet("delete", flag.ExitOnError)
 	id := deleteAddrFlagSet.String("id", "", "id of the address")
+	serverProto := deleteAddrFlagSet.String("server-proto", "https", "server protocol")
 	server := deleteAddrFlagSet.String("server", "", "server to query")
 	privKeyPath := deleteAddrFlagSet.String("privkey-path", "", "path to the private key")
 	privKeyBase64 := deleteAddrFlagSet.String("privkey-base64", "", "base64 encoded private key")
@@ -215,6 +220,7 @@ func cmdAddrDelete() error {
 	if *server == "" {
 		return errors.New("server is required")
 	}
+	*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	l.WithFields(log.Fields{
 		"server": *server,
 	}).Debug("using server")
@@ -230,6 +236,7 @@ func cmdAddrUpdate() error {
 	updateAddrFlagSet := flag.NewFlagSet("update", flag.ExitOnError)
 	id := updateAddrFlagSet.String("id", "", "id of the address")
 	server := updateAddrFlagSet.String("server", "", "server to query")
+	serverProto := updateAddrFlagSet.String("server-proto", "https", "server protocol")
 	pubKeyPath := updateAddrFlagSet.String("pubkey-path", "", "path to the public key")
 	pubKeyBase64 := updateAddrFlagSet.String("pubkey-base64", "", "base64 encoded public key")
 	privKeyPath := updateAddrFlagSet.String("privkey-path", "", "path to the private key")
@@ -290,6 +297,7 @@ func cmdAddrUpdate() error {
 	if *server == "" {
 		return errors.New("server is required")
 	}
+	*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	l.WithFields(log.Fields{
 		"server": *server,
 	}).Debug("using server")

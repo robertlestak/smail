@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -125,6 +126,7 @@ func cmdMsgList() error {
 	msgFlagSet := flag.NewFlagSet("msg", flag.ExitOnError)
 	addr := msgFlagSet.String("addr", "", "address")
 	server := msgFlagSet.String("server", "", "server")
+	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
 	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	page := msgFlagSet.Int("page", 0, "page")
@@ -171,6 +173,8 @@ func cmdMsgList() error {
 			return err
 		}
 		*server = s
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	}
 	l.WithFields(log.Fields{
 		"server": *server,
@@ -203,6 +207,7 @@ func cmdMsgDelete() error {
 	addr := msgFlagSet.String("addr", "", "address")
 	id := msgFlagSet.String("id", "", "message id")
 	server := msgFlagSet.String("server", "", "server")
+	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
 	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	msgFlagSet.Parse(os.Args[3:])
@@ -248,6 +253,8 @@ func cmdMsgDelete() error {
 			return err
 		}
 		*server = s
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	}
 	// delete message
 	if err := smail.DeleteMessage(*server, address.AddressID(*addr), *id, sig); err != nil {
@@ -266,6 +273,7 @@ func cmdMsgGet() error {
 	addr := msgFlagSet.String("addr", "", "address")
 	id := msgFlagSet.String("id", "", "message id")
 	server := msgFlagSet.String("server", "", "server")
+	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
 	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	output := msgFlagSet.String("output", "json", "output format")
@@ -313,6 +321,8 @@ func cmdMsgGet() error {
 			return err
 		}
 		*server = s
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
 	}
 	l.WithFields(log.Fields{
 		"server": *server,
