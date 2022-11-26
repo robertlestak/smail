@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 
@@ -91,7 +92,7 @@ func HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := rm.Send(); err != nil {
+	if err := rm.Send(os.Getenv("USE_DOH") == "true"); err != nil {
 		l.WithError(err).Error("failed to send message")
 		w.WriteHeader(http.StatusInternalServerError)
 		return

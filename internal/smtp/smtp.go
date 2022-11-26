@@ -119,7 +119,7 @@ func (s *Session) Data(r io.Reader) error {
 		Attachments: attachments,
 		Time:        emailTime,
 	}
-	if err := rm.Send(); err != nil {
+	if err := rm.Send(false); err != nil {
 		return err
 	}
 	return nil

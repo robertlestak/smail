@@ -233,10 +233,12 @@ func (m *Message) Decrypt(privKeyBytes []byte) error {
 	return nil
 }
 
-func EndpointFromAddr(addr string) (string, error) {
+func EndpointFromAddr(addr string, useDOH bool) (string, error) {
 	l := log.WithFields(log.Fields{
-		"app": "smail",
-		"fn":  "EndpointFromAddr",
+		"app":    "smail",
+		"fn":     "EndpointFromAddr",
+		"addr":   addr,
+		"useDOH": useDOH,
 	})
 	l.Debug("starting")
 	l = l.WithField("addr", addr)
@@ -257,7 +259,7 @@ func EndpointFromAddr(addr string) (string, error) {
 		endpoint = "http://localhost:8080"
 	} else {
 		var err error
-		endpoint, err = enpointFromDomain(domain)
+		endpoint, err = enpointFromDomain(domain, useDOH)
 		if err != nil {
 			l.WithError(err).Error("failed to get endpoint from domain")
 			return "", err
@@ -277,6 +279,7 @@ func EndpointFromAddr(addr string) (string, error) {
 type SendMessageJob struct {
 	RawMessage *RawMessage
 	ToAddr     string
+	UseDOH     bool
 }
 
 func sendMessageWorker(jobs <-chan SendMessageJob, results chan<- error) {
@@ -288,7 +291,7 @@ func sendMessageWorker(jobs <-chan SendMessageJob, results chan<- error) {
 	for j := range jobs {
 		l = l.WithField("job", j)
 		l.Debug("processing job")
-		endpoint, err := EndpointFromAddr(j.ToAddr)
+		endpoint, err := EndpointFromAddr(j.ToAddr, j.UseDOH)
 		if err != nil {
 			l.WithError(err).Error("failed to get endpoint from toaddr")
 			results <- err
@@ -317,10 +320,11 @@ func sendMessageWorker(jobs <-chan SendMessageJob, results chan<- error) {
 	}
 }
 
-func (m *RawMessage) Send() error {
+func (m *RawMessage) Send(useDOH bool) error {
 	l := log.WithFields(log.Fields{
 		"app": "smail",
 		"fn":  "Send",
+		"to":  m.To,
 	})
 	l.Debug("starting")
 	// ensure fromaddr is valid
@@ -348,18 +352,21 @@ func (m *RawMessage) Send() error {
 		jobs <- SendMessageJob{
 			RawMessage: tm,
 			ToAddr:     to,
+			UseDOH:     useDOH,
 		}
 	}
 	for _, cc := range m.CC {
 		jobs <- SendMessageJob{
 			RawMessage: tm,
 			ToAddr:     cc,
+			UseDOH:     useDOH,
 		}
 	}
 	for _, bcc := range m.BCC {
 		jobs <- SendMessageJob{
 			RawMessage: tm,
 			ToAddr:     bcc,
+			UseDOH:     useDOH,
 		}
 	}
 	close(jobs)
@@ -386,7 +393,7 @@ func DomainFromAddr(addr string) (string, error) {
 	return parts[1], nil
 }
 
-func enpointFromDomain(domain string) (string, error) {
+func enpointFromDomain(domain string, useDOH bool) (string, error) {
 	l := log.WithFields(log.Fields{
 		"app": "smail",
 		"fn":  "enpointFromDomain",
@@ -397,12 +404,14 @@ func enpointFromDomain(domain string) (string, error) {
 	// do a DNS txt lookup for the domain
 	// if the domain is not found, return an error
 	// if the domain is found, return the endpoint
-	txtrecords, err := net.LookupTXT(domain)
-	if err != nil {
-		l.WithError(err).Error("failed to lookup txt records")
-	}
-	if len(txtrecords) == 0 {
-		// no txt records found, try DOH
+	var txtrecords []string
+	var err error
+	if !useDOH {
+		txtrecords, err = net.LookupTXT(domain)
+		if err != nil {
+			l.WithError(err).Error("failed to lookup txt records")
+		}
+	} else if useDOH || len(txtrecords) == 0 {
 		dohResolver := os.Getenv("DOH_RESOLVER")
 		if dohResolver == "" {
 			dohResolver = "https://dns.google/dns-query{?dns}"

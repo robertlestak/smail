@@ -34,6 +34,7 @@ func cmdMsgNew() error {
 	body := msgFlagSet.String("body", "", "body")
 	privkeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privkeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
 	msgFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"from":           *fromAddr,
@@ -115,7 +116,7 @@ func cmdMsgNew() error {
 		Attachments: attach,
 		Time:        time.Now(),
 	}
-	if err := rm.Send(); err != nil {
+	if err := rm.Send(*useDOH); err != nil {
 		return err
 	}
 	return nil
@@ -137,6 +138,7 @@ func cmdMsgList() error {
 	pageSize := msgFlagSet.Int("page-size", 10, "page size")
 	output := msgFlagSet.String("output", "json", "output format")
 	outputPath := msgFlagSet.String("output-path", "-", "output path")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
 	msgFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"addr":           *addr,
@@ -172,7 +174,7 @@ func cmdMsgList() error {
 		return err
 	}
 	if *server == "" {
-		s, err := smail.EndpointFromAddr(*addr)
+		s, err := smail.EndpointFromAddr(*addr, *useDOH)
 		if err != nil {
 			return err
 		}
@@ -214,6 +216,7 @@ func cmdMsgDelete() error {
 	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
 	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
 	msgFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"addr":           *addr,
@@ -252,7 +255,7 @@ func cmdMsgDelete() error {
 		return err
 	}
 	if *server == "" {
-		s, err := smail.EndpointFromAddr(*addr)
+		s, err := smail.EndpointFromAddr(*addr, *useDOH)
 		if err != nil {
 			return err
 		}
@@ -282,6 +285,7 @@ func cmdMsgGet() error {
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	output := msgFlagSet.String("output", "json", "output format")
 	outputPath := msgFlagSet.String("output-path", "-", "output path")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
 	msgFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"addr":           *addr,
@@ -320,7 +324,7 @@ func cmdMsgGet() error {
 		return err
 	}
 	if *server == "" {
-		s, err := smail.EndpointFromAddr(*addr)
+		s, err := smail.EndpointFromAddr(*addr, *useDOH)
 		if err != nil {
 			return err
 		}
