@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -284,6 +285,7 @@ func cmdMsgGet() error {
 	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	output := msgFlagSet.String("output", "json", "output format")
+	attachmentDir := msgFlagSet.String("attachment-dir", "", "attachment directory")
 	outputPath := msgFlagSet.String("output-path", "-", "output path")
 	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
 	msgFlagSet.Parse(os.Args[3:])
@@ -343,6 +345,19 @@ func cmdMsgGet() error {
 	// decrypt message
 	if err := m.Decrypt(privKeyBytes); err != nil {
 		return err
+	}
+	if *attachmentDir != "" {
+		if _, err := os.Stat(*attachmentDir); os.IsNotExist(err) {
+			if err := os.MkdirAll(*attachmentDir, 0700); err != nil {
+				return err
+			}
+		}
+		// save attachments
+		for _, a := range m.Raw.Attachments {
+			if err := ioutil.WriteFile(filepath.Join(*attachmentDir, a.Name), a.Data, 0644); err != nil {
+				return err
+			}
+		}
 	}
 	return outputData(m, *output, *outputPath)
 }
