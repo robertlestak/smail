@@ -124,6 +124,22 @@ func cmdMsgNew() error {
 	return nil
 }
 
+func messageDecryptWorker(jobs <-chan *smail.Message, results chan<- error, privKey []byte) {
+	for j := range jobs {
+		// decrypt the message
+		err := j.Decrypt(privKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"app": "cli",
+				"fn":  "messageDecryptWorker",
+			}).Error(err)
+			results <- err
+			continue
+		}
+		results <- nil
+	}
+}
+
 func cmdMsgList() error {
 	l := log.WithFields(log.Fields{
 		"app": "cli",
@@ -194,9 +210,22 @@ func cmdMsgList() error {
 		return err
 	}
 	if *decrypt {
+		workers := 10
+		if len(messages) < workers {
+			workers = len(messages)
+		}
+		jobs := make(chan *smail.Message, workers)
+		results := make(chan error, workers)
+		for w := 1; w <= workers; w++ {
+			go messageDecryptWorker(jobs, results, privKeyBytes)
+		}
 		for _, m := range messages {
 			// decrypt message
-			if err := m.Decrypt(privKeyBytes); err != nil {
+			jobs <- m
+		}
+		close(jobs)
+		for a := 1; a <= len(messages); a++ {
+			if err := <-results; err != nil {
 				return err
 			}
 		}

@@ -95,6 +95,22 @@ func contains(s []string, e string) bool {
 	return false
 }
 
+func messageDecryptWorker(jobs <-chan *smail.Message, results chan<- error, privKey []byte) {
+	for j := range jobs {
+		// decrypt the message
+		err := j.Decrypt(privKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"app": "imap",
+				"fn":  "messageDecryptWorker",
+			}).Error(err)
+			results <- err
+			continue
+		}
+		results <- nil
+	}
+}
+
 func (u *User) GetNewMailMessages(existing []string) error {
 	l := log.WithFields(log.Fields{
 		"package":  "imap",
@@ -150,15 +166,28 @@ func (u *User) GetNewMailMessages(existing []string) error {
 	if err != nil {
 		return err
 	}
-	// decrypt the messages
-	for _, m := range newMessages {
-		if err := m.Decrypt(PrivateKeyBytes); err != nil {
-			return err
-		}
-	}
 	if len(newMessages) == 0 {
 		l.Debug("no new messages")
 		return nil
+	}
+	// decrypt the messages
+	workers := 10
+	if len(newMessages) < workers {
+		workers = len(newMessages)
+	}
+	jobs := make(chan *smail.Message, len(newMessages))
+	results := make(chan error, len(newMessages))
+	for w := 1; w <= workers; w++ {
+		go messageDecryptWorker(jobs, results, PrivateKeyBytes)
+	}
+	for _, m := range newMessages {
+		jobs <- m
+	}
+	close(jobs)
+	for a := 1; a <= len(newMessages); a++ {
+		if err := <-results; err != nil {
+			return err
+		}
 	}
 	// add the new messages to the inbox
 	if err := u.smailToImap(newMessages); err != nil {
