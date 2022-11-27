@@ -136,6 +136,7 @@ func cmdMsgList() error {
 	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
 	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	decrypt := msgFlagSet.Bool("decrypt", false, "decrypt messages")
 	page := msgFlagSet.Int("page", 0, "page")
 	pageSize := msgFlagSet.Int("page-size", 10, "page size")
 	output := msgFlagSet.String("output", "json", "output format")
@@ -192,16 +193,89 @@ func cmdMsgList() error {
 	if err != nil {
 		return err
 	}
-	for _, m := range messages {
-		// decrypt message
-		if err := m.Decrypt(privKeyBytes); err != nil {
+	if *decrypt {
+		for _, m := range messages {
+			// decrypt message
+			if err := m.Decrypt(privKeyBytes); err != nil {
+				return err
+			}
+		}
+		// order messages by raw time
+		sort.Slice(messages, func(i, j int) bool {
+			return messages[i].Raw.Time.After(messages[j].Raw.Time)
+		})
+	}
+	return outputData(messages, *output, *outputPath)
+}
+
+func cmdMsgListKeys() error {
+	l := log.WithFields(log.Fields{
+		"app": "cli",
+		"fn":  "cmdMsgListKeys",
+	})
+	l.Debug("starting")
+	msgFlagSet := flag.NewFlagSet("msg", flag.ExitOnError)
+	addr := msgFlagSet.String("addr", "", "address")
+	server := msgFlagSet.String("server", "", "server")
+	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
+	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
+	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	page := msgFlagSet.Int("page", 0, "page")
+	pageSize := msgFlagSet.Int("page-size", 10, "page size")
+	output := msgFlagSet.String("output", "json", "output format")
+	outputPath := msgFlagSet.String("output-path", "-", "output path")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
+	msgFlagSet.Parse(os.Args[3:])
+	l.WithFields(log.Fields{
+		"addr":           *addr,
+		"server":         *server,
+		"privkey-path":   *privateKeyPath,
+		"privkey-base64": *privateKeyBase64,
+	}).Debug("parsed flags")
+	if *addr == "" {
+		return errors.New("addr is required")
+	}
+	var privKeyBytes []byte
+	if *privateKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privateKeyPath)
+		if err != nil {
 			return err
 		}
+		privKeyBytes = fd
 	}
-	// order messages by raw time
-	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Raw.Time.After(messages[j].Raw.Time)
-	})
+	if *privateKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privateKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	}
+	if len(privKeyBytes) == 0 {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	if *server == "" {
+		s, err := smail.EndpointFromAddr(*addr, *useDOH)
+		if err != nil {
+			return err
+		}
+		*server = s
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	// get messages
+	messages, err := smail.GetMessageKeys(*server, address.AddressID(*addr), sig, *page, *pageSize)
+	if err != nil {
+		return err
+	}
 	return outputData(messages, *output, *outputPath)
 }
 
@@ -571,6 +645,8 @@ func cmdMsg() error {
 		return cmdMsgNew()
 	case "list":
 		return cmdMsgList()
+	case "list-keys":
+		return cmdMsgListKeys()
 	case "delete":
 		return cmdMsgDelete()
 	case "get":

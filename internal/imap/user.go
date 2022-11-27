@@ -86,12 +86,23 @@ func MessageToBytes(m *smail.Message) ([]byte, error) {
 	return bb, nil
 }
 
-func (u *User) GetSmailMessages(page, pageSize int) error {
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *User) GetNewMailMessages(existing []string) error {
 	l := log.WithFields(log.Fields{
-		"package": "imap",
-		"fn":      "GetSmailMessages",
+		"package":  "imap",
+		"fn":       "GetNewMailMessages",
+		"existing": existing,
 	})
 	l.Debug("called")
+	// get all message keys from server
 	sig, err := encrypt.NewSig(PrivateKeyBytes)
 	if err != nil {
 		return err
@@ -113,20 +124,55 @@ func (u *User) GetSmailMessages(page, pageSize int) error {
 		"server": server,
 	}).Debug("using server")
 	// get messages
-	messages, err := smail.GetMessages(server, address.AddressID(u.Address), sig, page, pageSize)
+	messages, err := smail.GetMessageKeys(server, address.AddressID(u.Address), sig, -1, 100)
 	if err != nil {
 		return err
 	}
+	l.WithFields(log.Fields{
+		"messages": messages,
+	}).Debug("got messages")
+	// get the ids which are not in the existing list
+	var newIDs []string
 	for _, m := range messages {
-		// decrypt message
+		if !contains(existing, m) {
+			newIDs = append(newIDs, m)
+		}
+	}
+	l.WithFields(log.Fields{
+		"newIDs": newIDs,
+	}).Debug("got newIDs")
+	// get the new messages
+	if len(newIDs) == 0 {
+		l.Debug("no new messages")
+		return nil
+	}
+	newMessages, err := smail.GetMessagesByIDs(server, address.AddressID(u.Address), sig, newIDs)
+	if err != nil {
+		return err
+	}
+	// decrypt the messages
+	for _, m := range newMessages {
 		if err := m.Decrypt(PrivateKeyBytes); err != nil {
 			return err
 		}
 	}
-	// order messages by raw time
-	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Raw.Time.After(messages[j].Raw.Time)
+	if len(newMessages) == 0 {
+		l.Debug("no new messages")
+		return nil
+	}
+	// add the new messages to the inbox
+	if err := u.smailToImap(newMessages); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *User) smailToImap(messages []*smail.Message) error {
+	l := log.WithFields(log.Fields{
+		"package": "imap",
+		"fn":      "smailToImap",
 	})
+	l.Debug("called")
 	nms := make(map[string][]*Message)
 	// convert to imap messages
 	mbNexts := make(map[string]uint32)
@@ -135,6 +181,9 @@ func (u *User) GetSmailMessages(page, pageSize int) error {
 	}
 	for _, m := range messages {
 		var thisuid uint32
+		if u == nil || u.mailboxes == nil || len(u.mailboxes) == 0 {
+			return errors.New("no mailboxes")
+		}
 		if _, ok := u.mailboxes[m.Raw.Mailbox]; !ok {
 			u.mailboxes[m.Raw.Mailbox] = &Mailbox{
 				//Subscribed: true,
@@ -193,7 +242,54 @@ func (u *User) GetSmailMessages(page, pageSize int) error {
 		l.WithFields(log.Fields{
 			"mailbox": k,
 		}).Debugf("adding %d messages", len(v))
-		u.mailboxes[k].Messages = v
+		u.mailboxes[k].Messages = append(u.mailboxes[k].Messages, v...)
+	}
+	return nil
+}
+
+func (u *User) GetSmailMessages(page, pageSize int) error {
+	l := log.WithFields(log.Fields{
+		"package": "imap",
+		"fn":      "GetSmailMessages",
+	})
+	l.Debug("called")
+	sig, err := encrypt.NewSig(PrivateKeyBytes)
+	if err != nil {
+		return err
+	}
+	var server string
+	if u.Address == "" {
+		return errors.New("no address")
+	}
+	if UpstreamServerAddr == "" {
+		s, err := smail.EndpointFromAddr(u.Address, false)
+		if err != nil {
+			return err
+		}
+		server = s
+	} else {
+		server = fmt.Sprintf("%s://%s", UpstreamServerProto, UpstreamServerAddr)
+	}
+	l.WithFields(log.Fields{
+		"server": server,
+	}).Debug("using server")
+	// get messages
+	messages, err := smail.GetMessages(server, address.AddressID(u.Address), sig, page, pageSize)
+	if err != nil {
+		return err
+	}
+	for _, m := range messages {
+		// decrypt message
+		if err := m.Decrypt(PrivateKeyBytes); err != nil {
+			return err
+		}
+	}
+	// order messages by raw time
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Raw.Time.After(messages[j].Raw.Time)
+	})
+	if err := u.smailToImap(messages); err != nil {
+		return err
 	}
 	return nil
 }
@@ -223,17 +319,83 @@ func (u *User) ListMailboxes(subscribed bool) (mailboxes []backend.Mailbox, err 
 	return
 }
 
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
+func (mbox *Mailbox) CurrentMessageIDs() ([]string, error) {
+	l := log.WithFields(log.Fields{
+		"package": "imap",
+		"fn":      "CurrentMessageIDs",
+	})
+	l.Debug("called")
+	var ids []string
+	if mbox == nil || mbox.Messages == nil {
+		return ids, nil
+	}
+	for _, m := range mbox.Messages {
+		// add to ids if not already there
+		if !stringInSlice(m.ID, ids) {
+			ids = append(ids, m.ID)
+		}
+	}
+	l.WithFields(log.Fields{
+		"ids": ids,
+		"len": len(ids),
+	}).Debug("ids")
+	return ids, nil
+}
+
+func (u *User) CurrentMessageIDs() ([]string, error) {
+	l := log.WithFields(log.Fields{
+		"package": "imap",
+		"fn":      "CurrentMessageIDs",
+	})
+	l.Debug("called")
+	var ids []string
+	if u.mailboxes == nil || len(u.mailboxes) == 0 {
+		return ids, nil
+	}
+	for _, m := range u.mailboxes {
+		for _, mm := range m.Messages {
+			// add to ids if not already there
+			if !stringInSlice(mm.ID, ids) {
+				ids = append(ids, mm.ID)
+			}
+		}
+	}
+	l.WithFields(log.Fields{
+		"ids": ids,
+		"len": len(ids),
+	}).Debug("ids")
+	return ids, nil
+}
+
 func (u *User) GetMailbox(name string) (mailbox backend.Mailbox, err error) {
 	l := log.WithFields(log.Fields{
 		"package": "imap",
 		"fn":      "GetMailbox",
+		"name":    name,
 	})
 	l.Debug("called")
 	mailbox, ok := u.mailboxes[name]
 	if !ok {
 		err = errors.New("No such mailbox")
+		return nil, err
 	}
-	if err := u.GetSmailMessages(0, 100); err != nil {
+	mex, err := u.CurrentMessageIDs()
+	if err != nil {
+		return nil, err
+	}
+	l.WithFields(log.Fields{
+		"mex": mex,
+	}).Debug("mex")
+	if err := u.GetNewMailMessages(mex); err != nil {
 		return nil, err
 	}
 	return

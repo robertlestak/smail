@@ -118,6 +118,9 @@ func (mbox *Mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error
 		"fn":      "Status",
 	})
 	l.Debug("called")
+	if len(items) == 0 || mbox == nil {
+		return nil, nil
+	}
 	status := imap.NewMailboxStatus(mbox.name, items)
 	status.Flags = mbox.flags()
 	status.PermanentFlags = []string{"\\*"}

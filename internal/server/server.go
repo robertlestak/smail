@@ -49,6 +49,7 @@ func Start(port, tlsCrtPath, tlsKeyPath string) error {
 	r.HandleFunc("/address/{id}/pubkey", address.HandleUpdateAddressPubKey).Methods("PUT")
 	r.HandleFunc("/message/send", smail.HandleSendMessage).Methods("POST")
 	r.HandleFunc("/messages/{id}", smail.HandleListMessagesForAddr).Methods("GET")
+	r.HandleFunc("/messages/{id}/keys", smail.HandleListMessageKeysForAddr).Methods("GET")
 	r.HandleFunc("/messages/{addr_id}/{id}", smail.HandleDeleteMessageById).Methods("DELETE")
 	r.HandleFunc("/messages/{addr_id}/{id}", smail.HandleUpdateMessage).Methods("PUT")
 	r.HandleFunc("/messages/{addr_id}/{id}", smail.HandleGetMessageById).Methods("GET")

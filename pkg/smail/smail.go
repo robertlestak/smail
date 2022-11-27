@@ -533,6 +533,39 @@ func ListMessagesForAddr(id string, privKeyBytes []byte, page int, pageSize int)
 	return messages, nil
 }
 
+func ListMessageKeysForAddr(id string, privKeyBytes []byte, page int, pageSize int) ([]string, error) {
+	l := log.WithFields(log.Fields{
+		"app": "smail",
+		"fn":  "ListMessageKeysForAddr",
+		"id":  id,
+	})
+	l.Debug("starting")
+	l.Debug("getting messages")
+	if id == "" {
+		return nil, errors.New("invalid id")
+	}
+	msgs, err := persist.DriverClient.DirList(path.Join(persist.DriverClient.MsgDir(), id))
+	if err != nil {
+		l.WithError(err).Error("failed to get messages")
+		return nil, err
+	}
+	if page >= 0 {
+		// filter msgs by page and pageSize
+		start := page * pageSize
+		end := start + pageSize
+		if start > len(msgs) {
+			return nil, errors.New("invalid page")
+		}
+		if end > len(msgs) {
+			end = len(msgs)
+		}
+		msgs = msgs[start:end]
+	}
+	l = l.WithField("msgs", msgs)
+	l.Debug("messages retrieved")
+	return msgs, nil
+}
+
 func DeleteMessageByID(addrId string, msgId string) error {
 	l := log.WithFields(log.Fields{
 		"app":    "smail",
