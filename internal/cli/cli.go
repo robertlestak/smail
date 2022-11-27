@@ -17,6 +17,7 @@ func cmdServer() error {
 	})
 	l.Debug("starting")
 	serverCmd := flag.NewFlagSet("server", flag.ExitOnError)
+	serverAddr := serverCmd.String("addr", "", "address to listen on")
 	port := serverCmd.String("port", "8080", "port to listen on")
 	tlsCrtPath := serverCmd.String("tls-crt", "", "path to TLS certificate")
 	tlsKeyPath := serverCmd.String("tls-key", "", "path to TLS key")
@@ -30,7 +31,7 @@ func cmdServer() error {
 	smtpAllowInsecureAuth := serverCmd.Bool("smtp-allow-insecure-auth", false, "allow insecure authentication for SMTP")
 	serverCmd.Parse(os.Args[2:])
 	go func() {
-		if err := server.Start(*port, *tlsCrtPath, *tlsKeyPath); err != nil {
+		if err := server.Start(*serverAddr, *port, *tlsCrtPath, *tlsKeyPath); err != nil {
 			l.WithError(err).Fatal("server failed")
 		}
 	}()

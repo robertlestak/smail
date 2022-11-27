@@ -149,7 +149,7 @@ func Start(domain string, port string, tlsCAPath string, tlsCrtPath string, tlsK
 
 	s := smtp.NewServer(be)
 
-	s.Addr = ":" + port
+	s.Addr = domain + ":" + port
 	s.Domain = domain
 	s.ReadTimeout = 30 * time.Second
 	s.WriteTimeout = 30 * time.Second

@@ -18,7 +18,7 @@ func handlehealthcheck(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func Start(port, tlsCrtPath, tlsKeyPath string) error {
+func Start(addr, port, tlsCrtPath, tlsKeyPath string) error {
 	l := log.WithFields(log.Fields{
 		"app": "server",
 		"fn":  "Start",
@@ -67,13 +67,13 @@ func Start(port, tlsCrtPath, tlsKeyPath string) error {
 		AllowCredentials: true,
 		Debug:            os.Getenv("CORS_DEBUG") == "true",
 	})
-	sPort := fmt.Sprintf(":%s", port)
+	sAddr := fmt.Sprintf("%s:%s", addr, port)
 	h := c.Handler(r)
 	if tlsCrtPath != "" && tlsKeyPath != "" {
 		l.Debug("starting server with TLS")
-		return http.ListenAndServeTLS(sPort, tlsCrtPath, tlsKeyPath, h)
+		return http.ListenAndServeTLS(sAddr, tlsCrtPath, tlsKeyPath, h)
 	} else {
 		l.Debug("starting server without TLS")
-		return http.ListenAndServe(sPort, h)
+		return http.ListenAndServe(sAddr, h)
 	}
 }
