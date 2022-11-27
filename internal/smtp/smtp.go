@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"os"
 	"time"
 
 	"github.com/emersion/go-smtp"
@@ -15,12 +14,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	AllowAnonymous = false
+	DefaultUser    string
+	DefaultPass    string
+)
+
 // The Backend implements SMTP server methods.
 type Backend struct{}
 
 // Login handles a login command with username and password.
 func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	if username != os.Getenv("SMTP_USER") || password != os.Getenv("SMTP_PASS") {
+	if DefaultUser == "" || DefaultPass == "" {
+		return nil, errors.New("No user or password set")
+	}
+	if username != DefaultUser || password != DefaultPass {
 		return nil, errors.New("invalid username or password")
 	}
 	return &Session{}, nil
@@ -29,7 +37,7 @@ func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string
 // AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
 func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
 	//return nil, smtp.ErrAuthRequired
-	if os.Getenv("SMTP_ANONYMOUS") == "true" {
+	if AllowAnonymous {
 		return &Session{}, nil
 	}
 	return nil, smtp.ErrAuthRequired
@@ -139,7 +147,7 @@ func (s *Session) Logout() error {
 	return nil
 }
 
-func Start(domain string, port string, tlsCAPath string, tlsCrtPath string, tlsKeyPath string, allowInsecureAuth bool) error {
+func Start(domain string, port string, tlsCAPath string, tlsCrtPath string, tlsKeyPath string, allowInsecureAuth bool, allowAnon bool, username string, password string) error {
 	l := log.WithFields(log.Fields{
 		"func": "Start",
 		"port": port,
@@ -157,6 +165,9 @@ func Start(domain string, port string, tlsCAPath string, tlsCrtPath string, tlsK
 	s.MaxMessageBytes = 1024 * 1024 * 100
 	s.MaxRecipients = 50
 	s.AllowInsecureAuth = allowInsecureAuth
+	AllowAnonymous = allowAnon
+	DefaultUser = username
+	DefaultPass = password
 	if tlsCrtPath != "" && tlsKeyPath != "" {
 		enableTls := true
 		tlsInsecure := false

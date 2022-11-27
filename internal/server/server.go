@@ -24,7 +24,11 @@ func Start(addr, port, tlsCrtPath, tlsKeyPath string) error {
 		"fn":  "Start",
 	})
 	l.Debug("starting")
-	d, err := persist.LoadDriver(persist.DriverName(os.Getenv("PERSIST_DRIVER")))
+	dn := persist.DriverFS
+	if os.Getenv("PERSIST_DRIVER") != "" {
+		dn = persist.DriverName(os.Getenv("PERSIST_DRIVER"))
+	}
+	d, err := persist.LoadDriver(dn)
 	if err != nil {
 		return err
 	}

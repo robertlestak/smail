@@ -21,10 +21,14 @@ func cmdServer() error {
 	port := serverCmd.String("port", "8080", "port to listen on")
 	tlsCrtPath := serverCmd.String("tls-crt", "", "path to TLS certificate")
 	tlsKeyPath := serverCmd.String("tls-key", "", "path to TLS key")
-
-	enableSmtp := serverCmd.Bool("enable-smtp", false, "enable SMTP server")
+	enableSmtpPlain := serverCmd.Bool("smtp-plain", false, "enable plain text SMTP server")
+	enableSmtpTls := serverCmd.Bool("smtp-tls", false, "enable TLS SMTP server")
 	smtpPort := serverCmd.String("smtp-port", "2525", "port to listen on for SMTP")
 	smtpDomain := serverCmd.String("smtp-domain", "", "domain to listen on for SMTP")
+	smtpAllowAnonymous := serverCmd.Bool("smtp-allow-anonymous", false, "allow anonymous SMTP connections")
+	smtpAuthUsername := serverCmd.String("smtp-user", "", "username for SMTP authentication")
+	smtpAuthPassword := serverCmd.String("smtp-pass", "", "password for SMTP authentication")
+	smtpTLSPort := serverCmd.String("smtp-tls-port", "587", "port to listen on for TLS SMTP")
 	smtpTlsCaPath := serverCmd.String("smtp-tls-ca", "", "path to TLS CA for SMTP")
 	smtpTlsCrtPath := serverCmd.String("smtp-tls-crt", "", "path to TLS certificate for SMTP")
 	smtpTlsKeyPath := serverCmd.String("smtp-tls-key", "", "path to TLS key for SMTP")
@@ -35,7 +39,24 @@ func cmdServer() error {
 			l.WithError(err).Fatal("server failed")
 		}
 	}()
-	if *enableSmtp {
+	if *enableSmtpTls {
+		go func() {
+			if err := smtp.Start(
+				*smtpDomain,
+				*smtpTLSPort,
+				*smtpTlsCaPath,
+				*smtpTlsCrtPath,
+				*smtpTlsKeyPath,
+				*smtpAllowInsecureAuth,
+				*smtpAllowAnonymous,
+				*smtpAuthUsername,
+				*smtpAuthPassword,
+			); err != nil {
+				l.WithError(err).Fatal("smtp server failed")
+			}
+		}()
+	}
+	if *enableSmtpPlain {
 		go func() {
 			if err := smtp.Start(
 				*smtpDomain,
@@ -44,6 +65,9 @@ func cmdServer() error {
 				*smtpTlsCrtPath,
 				*smtpTlsKeyPath,
 				*smtpAllowInsecureAuth,
+				*smtpAllowAnonymous,
+				*smtpAuthUsername,
+				*smtpAuthPassword,
 			); err != nil {
 				l.WithError(err).Fatal("smtp server failed")
 			}
