@@ -115,6 +115,7 @@ func cmdMsgNew() error {
 		CC:          cc,
 		BCC:         bcc,
 		Attachments: attach,
+		Mailbox:     "INBOX",
 		Time:        time.Now(),
 	}
 	if err := rm.Send(*useDOH); err != nil {
@@ -362,6 +363,195 @@ func cmdMsgGet() error {
 	return outputData(m, *output, *outputPath)
 }
 
+func cmdMsgUpdateMailbox() error {
+	l := log.WithFields(log.Fields{
+		"app": "cli",
+		"fn":  "cmdMsgUpdateMailbox",
+	})
+	l.Debug("starting")
+	msgFlagSet := flag.NewFlagSet("msg", flag.ExitOnError)
+	addr := msgFlagSet.String("addr", "", "address")
+	id := msgFlagSet.String("id", "", "message id")
+	server := msgFlagSet.String("server", "", "server")
+	mailbox := msgFlagSet.String("mailbox", "", "mailbox")
+	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
+	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
+	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
+	msgFlagSet.Parse(os.Args[3:])
+	l.WithFields(log.Fields{
+		"addr":           *addr,
+		"privkey-path":   *privateKeyPath,
+		"privkey-base64": *privateKeyBase64,
+	}).Debug("parsed flags")
+	if *addr == "" {
+		return errors.New("addr is required")
+	}
+	var privKeyBytes []byte
+	if *privateKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privateKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	}
+	if *privateKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privateKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	}
+	if len(privKeyBytes) == 0 {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	if *server == "" {
+		s, err := smail.EndpointFromAddr(*addr, *useDOH)
+		if err != nil {
+			return err
+		}
+		*server = s
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	// get mailbox
+	m, err := smail.GetMessage(*server, address.AddressID(*addr), *id, sig)
+	if err != nil {
+		return err
+	}
+	// decrypt message
+	if err := m.Decrypt(privKeyBytes); err != nil {
+		return err
+	}
+	// update mailbox
+	m.Raw.Mailbox = *mailbox
+	// encrypt message
+	priv, err := encrypt.BytesToPrivKey(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	enc, err := m.Raw.Encrypt(encrypt.PubKeyBytes(&priv.PublicKey))
+	if err != nil {
+		return err
+	}
+	m.EncryptedMessage = enc
+	// update message
+	aid := address.AddressID(*addr)
+	if err := smail.UpdateRemoteMessage(*server, aid, *id, m, sig); err != nil {
+		return err
+	}
+	return nil
+}
+
+func cmdMsgUpdateFlags() error {
+	l := log.WithFields(log.Fields{
+		"app": "cli",
+		"fn":  "cmdMsgUpdateFlags",
+	})
+	l.Debug("starting")
+	msgFlagSet := flag.NewFlagSet("msg", flag.ExitOnError)
+	addr := msgFlagSet.String("addr", "", "address")
+	id := msgFlagSet.String("id", "", "message id")
+	server := msgFlagSet.String("server", "", "server")
+	flags := msgFlagSet.String("flags", "", "flags")
+	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
+	privateKeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
+	privateKeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
+	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
+	msgFlagSet.Parse(os.Args[3:])
+	l.WithFields(log.Fields{
+		"addr":           *addr,
+		"privkey-path":   *privateKeyPath,
+		"privkey-base64": *privateKeyBase64,
+	}).Debug("parsed flags")
+	if *addr == "" {
+		return errors.New("addr is required")
+	}
+	var privKeyBytes []byte
+	if *privateKeyPath != "" {
+		// read privkey from file
+		fd, err := ioutil.ReadFile(*privateKeyPath)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = fd
+	}
+	if *privateKeyBase64 != "" {
+		// decode base64 privkey
+		bd, err := base64.StdEncoding.DecodeString(*privateKeyBase64)
+		if err != nil {
+			return err
+		}
+		privKeyBytes = bd
+	}
+	if len(privKeyBytes) == 0 {
+		return errors.New("privkey is required")
+	}
+	sig, err := encrypt.NewSig(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	if *server == "" {
+		s, err := smail.EndpointFromAddr(*addr, *useDOH)
+		if err != nil {
+			return err
+		}
+		*server = s
+	} else {
+		*server = fmt.Sprintf("%s://%s", *serverProto, *server)
+	}
+	l.WithFields(log.Fields{
+		"server": *server,
+	}).Debug("using server")
+	// get mailbox
+	m, err := smail.GetMessage(*server, address.AddressID(*addr), *id, sig)
+	if err != nil {
+		return err
+	}
+	// decrypt message
+	if err := m.Decrypt(privKeyBytes); err != nil {
+		return err
+	}
+	// update flags
+	var flagsArr []string
+	if *flags != "" {
+		flagsArr = strings.Split(*flags, ",")
+		// remove empty flags
+		for i := 0; i < len(flagsArr); i++ {
+			if flagsArr[i] == "" {
+				flagsArr = append(flagsArr[:i], flagsArr[i+1:]...)
+				i--
+			}
+		}
+	}
+	m.Raw.Flags = flagsArr
+	// encrypt message
+	priv, err := encrypt.BytesToPrivKey(privKeyBytes)
+	if err != nil {
+		return err
+	}
+	enc, err := m.Raw.Encrypt(encrypt.PubKeyBytes(&priv.PublicKey))
+	if err != nil {
+		return err
+	}
+	m.EncryptedMessage = enc
+	// update message
+	aid := address.AddressID(*addr)
+	if err := smail.UpdateRemoteMessage(*server, aid, *id, m, sig); err != nil {
+		return err
+	}
+	return nil
+}
+
 func cmdMsg() error {
 	l := log.WithFields(log.Fields{
 		"app": "cli",
@@ -385,6 +575,10 @@ func cmdMsg() error {
 		return cmdMsgDelete()
 	case "get":
 		return cmdMsgGet()
+	case "update-mailbox":
+		return cmdMsgUpdateMailbox()
+	case "update-flags":
+		return cmdMsgUpdateFlags()
 	default:
 		return errors.New("invalid subcommand")
 	}

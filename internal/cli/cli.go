@@ -70,6 +70,8 @@ func Start() error {
 		return cmdMsg()
 	case "sig":
 		return cmdSig()
+	case "proxy":
+		return cmdProxy()
 	default:
 		return errors.New("invalid argument")
 	}

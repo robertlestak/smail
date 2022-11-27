@@ -55,6 +55,8 @@ func (s *Session) Rcpt(to string) error {
 // parseEmailContent parses the email content and returns the subject, body, attachments,
 // and time of the email.
 func parseEmailContent(content []byte) (string, string, []smail.Attachment, time.Time, error) {
+	l := log.WithField("func", "parseEmailContent")
+	l.Debug("Parsing email content")
 	var subject, body string
 	var attachments []smail.Attachment
 	var emailTime time.Time
@@ -71,6 +73,7 @@ func parseEmailContent(content []byte) (string, string, []smail.Attachment, time
 	if env.HTML != "" {
 		body = env.HTML
 	}
+	l.Debug("Email body:", body)
 	// Get the email time
 	emailTime, err = env.Date()
 	if err != nil {
@@ -89,6 +92,7 @@ func parseEmailContent(content []byte) (string, string, []smail.Attachment, time
 			Data: attachment.Content,
 		})
 	}
+	l.Debug("Email attachments:", attachments)
 	return subject, body, attachments, emailTime, nil
 }
 
@@ -136,15 +140,21 @@ func (s *Session) Logout() error {
 }
 
 func Start(domain string, port string, tlsCAPath string, tlsCrtPath string, tlsKeyPath string, allowInsecureAuth bool) error {
+	l := log.WithFields(log.Fields{
+		"func": "Start",
+		"port": port,
+	})
+	l.Debug("Starting SMTP server")
 	be := &Backend{}
 
 	s := smtp.NewServer(be)
 
 	s.Addr = ":" + port
 	s.Domain = domain
-	s.ReadTimeout = 10 * time.Second
-	s.WriteTimeout = 10 * time.Second
-	s.MaxMessageBytes = 1024 * 1024
+	s.ReadTimeout = 30 * time.Second
+	s.WriteTimeout = 30 * time.Second
+	// max size is 100MB
+	s.MaxMessageBytes = 1024 * 1024 * 100
 	s.MaxRecipients = 50
 	s.AllowInsecureAuth = allowInsecureAuth
 	if tlsCrtPath != "" && tlsKeyPath != "" {
@@ -156,7 +166,7 @@ func Start(domain string, port string, tlsCAPath string, tlsCrtPath string, tlsK
 		}
 		s.TLSConfig = t
 	}
-	log.Println("Starting server at", s.Addr)
+	l.Debug("Starting server at", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
 		return err
 	}

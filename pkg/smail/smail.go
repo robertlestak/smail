@@ -29,6 +29,8 @@ type Attachment struct {
 }
 
 type RawMessage struct {
+	Mailbox     string       `json:"mailbox"`
+	Flags       []string     `json:"flags"`
 	Time        time.Time    `json:"time"`
 	To          []string     `json:"to"`
 	CC          []string     `json:"cc"`
@@ -58,8 +60,8 @@ func (m *RawMessage) ValidateInputs() error {
 	if m.Subject == "" {
 		return errors.New("subject is required")
 	}
-	if m.Body == "" {
-		return errors.New("body is required")
+	if m.Body == "" && len(m.Attachments) == 0 {
+		return errors.New("body and / or attachments required")
 	}
 	if m.FromAddr == "" {
 		return errors.New("FromAddr is required")
@@ -116,6 +118,7 @@ func (m *RawMessage) CreateMessage(endpoint string, toaddr string) (*Message, er
 	}
 	l = l.WithField("toPubKey", toPubKey)
 	l.Debug("pubkey retrieved")
+	m.Mailbox = "INBOX"
 	m.Time = time.Now()
 	encryptedMessage, err := m.Encrypt(toPubKey)
 	if err != nil {
@@ -547,6 +550,28 @@ func DeleteMessageByID(addrId string, msgId string) error {
 	dir := path.Join(persist.DriverClient.MsgDir(), addrId)
 	if err := persist.DriverClient.Delete(dir, msgId); err != nil {
 		l.WithError(err).Error("failed to delete message")
+		return err
+	}
+	return nil
+}
+
+func UpdateMessage(addrId string, msgId string, m Message) error {
+	l := log.WithFields(log.Fields{
+		"app":    "smail",
+		"fn":     "UpdateMessage",
+		"addrId": addrId,
+		"msgId":  msgId,
+	})
+	l.Debug("starting")
+	if addrId == "" {
+		return errors.New("invalid addrId")
+	}
+	if msgId == "" {
+		return errors.New("invalid msgId")
+	}
+	dir := path.Join(persist.DriverClient.MsgDir(), addrId)
+	if err := persist.DriverClient.Store(dir, msgId, m); err != nil {
+		l.WithError(err).Error("failed to save message")
 		return err
 	}
 	return nil

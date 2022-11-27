@@ -1,6 +1,7 @@
 package smail
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -247,6 +248,57 @@ func HandleGetMessageById(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func HandleUpdateMessage(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{
+		"app": "server",
+		"fn":  "HandleUpdateMessage",
+	})
+	l.Debug("starting")
+	vars := mux.Vars(r)
+	addrId := vars["addr_id"]
+	msgID := vars["id"]
+	sig, err := encrypt.ParseSignedRequest(r)
+	if err != nil {
+		l.WithError(err).Error("failed to parse signed request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
+	if err != nil {
+		l.WithError(err).Error("failed to convert bytes to public key")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	addr, err := address.GetByID(addrId)
+	if err != nil {
+		l.WithError(err).Error("failed to get address")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
+	if err != nil {
+		l.WithError(err).Error("failed to convert bytes to public key")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !sigPubKey.Equal(aPubKey) {
+		l.Error("public key mismatch")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	var m Message
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		l.WithError(err).Error("failed to decode json")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := UpdateMessage(addrId, msgID, m); err != nil {
+		l.WithError(err).Error("failed to update message")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
 func GetMessages(server string, addrId string, sig string, page int, pageSize int) ([]*Message, error) {
 	l := log.WithFields(log.Fields{
 		"app": "server",
@@ -338,4 +390,34 @@ func GetMessage(server string, addrId string, msgId string, sig string) (*Messag
 		return nil, err
 	}
 	return message, nil
+}
+
+func UpdateRemoteMessage(server string, addrId string, msgId string, msg *Message, sig string) error {
+	l := log.WithFields(log.Fields{
+		"app": "server",
+		"fn":  "UpdateRemoteMessage",
+	})
+	l.Debug("starting")
+	b, err := json.Marshal(msg)
+	if err != nil {
+		l.WithError(err).Error("failed to marshal json")
+		return err
+	}
+	req, err := http.NewRequest("PUT", server+"/messages/"+addrId+"/"+msgId, bytes.NewBuffer(b))
+	if err != nil {
+		l.WithError(err).Error("failed to create request")
+		return err
+	}
+	req.Header.Set("X-Signature", sig)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		l.WithError(err).Error("failed to make request")
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		l.WithField("status", resp.StatusCode).Error("bad status")
+		return errors.New("bad status")
+	}
+	return nil
 }

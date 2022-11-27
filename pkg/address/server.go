@@ -211,12 +211,12 @@ func HandleGetByID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 	a, err := GetByID(id)
-	a.PrivKey = nil
 	if err != nil {
 		l.WithError(err).Error("failed to get address")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	a.PrivKey = nil
 	if err := json.NewEncoder(w).Encode(a); err != nil {
 		l.WithError(err).Error("failed to encode json")
 		w.WriteHeader(http.StatusInternalServerError)
