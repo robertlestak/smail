@@ -462,9 +462,9 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqset *imap.SeqSet, destName string
 	if !ok {
 		// create destination mailbox
 		dest = &Mailbox{
-			user: mbox.user,
-			name: destName,
-			//Subscribed: true,
+			user:       mbox.user,
+			name:       destName,
+			Subscribed: true,
 		}
 	}
 

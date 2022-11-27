@@ -131,6 +131,7 @@ func (u *User) GetNewMailMessages(existing []string) error {
 	}).Debug("got messages")
 	// get the ids which are not in the existing list
 	var newIDs []string
+	var removedServerSide []string
 	for _, m := range messages {
 		if !contains(existing, m) {
 			newIDs = append(newIDs, m)
@@ -139,9 +140,20 @@ func (u *User) GetNewMailMessages(existing []string) error {
 	l.WithFields(log.Fields{
 		"newIDs": newIDs,
 	}).Debug("got newIDs")
+	for _, e := range existing {
+		if !contains(messages, e) {
+			removedServerSide = append(removedServerSide, e)
+		}
+	}
 	// get the new messages
 	if len(newIDs) == 0 {
 		l.Debug("no new messages")
+		// remove the messages which were removed server side
+		if len(removedServerSide) > 0 {
+			if err := u.RemoveMessages(removedServerSide); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	newMessages, err := smail.GetMessagesByIDs(server, address.AddressID(u.Address), sig, newIDs)
@@ -175,6 +187,45 @@ func (u *User) GetNewMailMessages(existing []string) error {
 	if err := u.smailToImap(newMessages); err != nil {
 		return err
 	}
+	// remove the messages which were removed server side
+	if len(removedServerSide) > 0 {
+		if err := u.RemoveMessages(removedServerSide); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (u *User) RemoveMessage(id string) error {
+	l := log.WithFields(log.Fields{
+		"package": "imap",
+		"fn":      "RemoveMessage",
+		"id":      id,
+	})
+	l.Debug("called")
+	for _, m := range u.mailboxes {
+		for i, mm := range m.Messages {
+			if mm.ID == id {
+				m.Messages = append(m.Messages[:i], m.Messages[i+1:]...)
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+func (u *User) RemoveMessages(removed []string) error {
+	l := log.WithFields(log.Fields{
+		"package":  "imap",
+		"fn":       "RemoveMessages",
+		"existing": removed,
+	})
+	l.Debug("called")
+	for _, id := range removed {
+		if err := u.RemoveMessage(id); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -197,10 +248,10 @@ func (u *User) smailToImap(messages []*smail.Message) error {
 		}
 		if _, ok := u.mailboxes[m.Raw.Mailbox]; !ok {
 			u.mailboxes[m.Raw.Mailbox] = &Mailbox{
-				//Subscribed: true,
-				Messages: []*Message{},
-				name:     m.Raw.Mailbox,
-				user:     u,
+				Subscribed: true,
+				Messages:   []*Message{},
+				name:       m.Raw.Mailbox,
+				user:       u,
 			}
 		}
 		for _, v := range u.mailboxes[m.Raw.Mailbox].Messages {
