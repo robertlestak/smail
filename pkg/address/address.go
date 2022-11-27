@@ -51,6 +51,7 @@ func AddressID(address string) string {
 	})
 	l.Debug("starting")
 	h := sha512.New()
+	address = strings.TrimSpace(strings.ToLower(address))
 	h.Write([]byte(address))
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -66,8 +67,8 @@ func NewAddress(name string, domain string, pubKeyBytes []byte) (*Address, error
 		"fn":  "NewAddress",
 	})
 	l.Debug("starting")
-	name = strings.ToLower(name)
-	domain = strings.ToLower(domain)
+	name = strings.TrimSpace(strings.ToLower(name))
+	domain = strings.TrimSpace(strings.ToLower(domain))
 	a := &Address{
 		Name:   name,
 		Domain: domain,
