@@ -392,10 +392,8 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqset *imap.SeqSet, op imap.
 		}
 
 		msg.Flags = backendutil.UpdateFlags(msg.Flags, op, flags)
-		if uid {
-			if err := mbox.updateFlags(msg.Uid); err != nil {
-				return err
-			}
+		if err := mbox.updateFlags(id); err != nil {
+			return err
 		}
 	}
 
@@ -483,10 +481,8 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqset *imap.SeqSet, destName string
 		msgCopy := *msg
 		msgCopy.Uid = dest.uidNext()
 		dest.Messages = append(dest.Messages, &msgCopy)
-		if uid {
-			if err := dest.updateMailbox(destName, msgCopy.Uid); err != nil {
-				return err
-			}
+		if err := dest.updateMailbox(destName, id); err != nil {
+			return err
 		}
 	}
 

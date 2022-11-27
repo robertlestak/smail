@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 
 	"gopkg.in/gomail.v2"
 
@@ -22,23 +21,6 @@ type User struct {
 	Address   string
 	password  string
 	mailboxes map[string]*Mailbox
-}
-
-func removeInlineAttachments(msg []byte) []byte {
-	l := log.WithFields(log.Fields{
-		"package": "imap",
-		"fn":      "removeInlineAttachments",
-	})
-	l.Debug("called")
-	// remove all attachments from the message
-	var newMsg []byte
-	for _, line := range strings.Split(string(msg), "\r\n") {
-		if strings.HasPrefix(line, "Content-Disposition: attachment") {
-			continue
-		}
-		newMsg = append(newMsg, []byte(line+"\r\n")...)
-	}
-	return newMsg
 }
 
 func MessageToBytes(m *smail.Message) ([]byte, error) {
@@ -405,7 +387,7 @@ func (u *User) CurrentMessageIDs() ([]string, error) {
 	return ids, nil
 }
 
-func (u *User) GetMailbox(name string) (mailbox backend.Mailbox, err error) {
+func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
 	l := log.WithFields(log.Fields{
 		"package": "imap",
 		"fn":      "GetMailbox",
@@ -414,8 +396,14 @@ func (u *User) GetMailbox(name string) (mailbox backend.Mailbox, err error) {
 	l.Debug("called")
 	mailbox, ok := u.mailboxes[name]
 	if !ok {
-		err = errors.New("No such mailbox")
-		return nil, err
+		// create mailbox
+		mailbox = &Mailbox{
+			Subscribed: true,
+			Messages:   []*Message{},
+			name:       name,
+			user:       u,
+		}
+		u.mailboxes[name] = mailbox
 	}
 	mex, err := u.CurrentMessageIDs()
 	if err != nil {
@@ -427,7 +415,7 @@ func (u *User) GetMailbox(name string) (mailbox backend.Mailbox, err error) {
 	if err := u.GetNewMailMessages(mex); err != nil {
 		return nil, err
 	}
-	return
+	return mailbox, nil
 }
 
 func (u *User) CreateMailbox(name string) error {

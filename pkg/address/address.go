@@ -233,15 +233,19 @@ func GetPrivKey(id string) ([]byte, error) {
 	})
 	l.Debug("starting")
 	if id == "" {
+		l.Error("id is empty")
 		return nil, errors.New("id is empty")
 	}
 	if pk, ok := PrivKeys[id]; ok {
+		l.WithField("id", id).Debug("found private key")
 		return pk, nil
 	}
 	a, err := LoadLocalAddressByID(id)
 	if err != nil {
+		l.WithError(err).Error("failed to load address")
 		return nil, err
 	}
+	l.WithField("id", id).Debug("found local address")
 	return a.PrivKey, nil
 }
 

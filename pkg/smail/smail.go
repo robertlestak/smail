@@ -215,6 +215,7 @@ func (m *Message) Decrypt(privKeyBytes []byte) error {
 			return nil
 		}
 		if pk == nil {
+			l.Debug("privkey nil")
 			return nil
 		}
 	}
