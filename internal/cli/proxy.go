@@ -9,6 +9,7 @@ import (
 
 	"github.com/robertlestak/smail/internal/imap"
 	"github.com/robertlestak/smail/internal/smtp"
+	"github.com/robertlestak/smail/internal/smtpfallback"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,6 +28,16 @@ func cmdProxy() error {
 	smtpDomain := proxyCmd.String("smtp-domain", "", "domain to listen on for SMTP")
 	smtpTLSPort := proxyCmd.String("smtp-tls-port", "587", "port to listen on for TLS SMTP")
 	smtpAllowAnonymous := proxyCmd.Bool("smtp-allow-anonymous", false, "allow anonymous SMTP connections")
+	smtpFallback := proxyCmd.Bool("smtp-fallback", false, "fallback to SMTP if recipient does not support smail")
+	smtpFallbackHost := proxyCmd.String("smtp-fallback-host", "", "host to fallback to if recipient does not support smail")
+	smtpFallbackPort := proxyCmd.Int("smtp-fallback-port", 25, "port to fallback to if recipient does not support smail")
+	smtpFallbackUser := proxyCmd.String("smtp-fallback-user", "", "username to use for fallback SMTP")
+	smtpFallbackPass := proxyCmd.String("smtp-fallback-pass", "", "password to use for fallback SMTP")
+	smtpFallbackTlsEnable := proxyCmd.Bool("smtp-fallback-tls", false, "enable TLS for fallback SMTP")
+	smtpFallbackTlsSkipVerify := proxyCmd.Bool("smtp-fallback-tls-skip-verify", false, "skip TLS verification for fallback SMTP")
+	smtpFallbackTlsCaCertPath := proxyCmd.String("smtp-fallback-tls-ca-cert-path", "", "path to CA certificate for fallback SMTP")
+	smtpFallbackTlsCertPath := proxyCmd.String("smtp-fallback-tls-cert-path", "", "path to certificate for fallback SMTP")
+	smtpFallbackTlsKeyPath := proxyCmd.String("smtp-fallback-tls-key-path", "", "path to key for fallback SMTP")
 	smtpAuthUsername := proxyCmd.String("smtp-user", "", "username for SMTP authentication")
 	smtpAuthPassword := proxyCmd.String("smtp-pass", "", "password for SMTP authentication")
 	smtpTlsCaPath := proxyCmd.String("smtp-tls-ca", "", "path to TLS CA for SMTP")
@@ -138,6 +149,20 @@ func cmdProxy() error {
 				l.WithError(err).Fatal("imap server failed")
 			}
 		}()
+	}
+	if *smtpFallback {
+		smtpfallback.Enabled = true
+		smtpfallback.Cfg = &smtpfallback.Config{
+			Host:          *smtpFallbackHost,
+			Port:          *smtpFallbackPort,
+			User:          *smtpFallbackUser,
+			Pass:          *smtpFallbackPass,
+			TlsEnable:     *smtpFallbackTlsEnable,
+			TlsSkipVerify: *smtpFallbackTlsSkipVerify,
+			TlsCACert:     *smtpFallbackTlsCaCertPath,
+			TlsCert:       *smtpFallbackTlsCertPath,
+			TlsKey:        *smtpFallbackTlsKeyPath,
+		}
 	}
 	select {}
 }

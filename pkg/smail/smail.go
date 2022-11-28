@@ -17,10 +17,15 @@ import (
 
 	"github.com/ncruces/go-dns"
 	"github.com/robertlestak/smail/internal/persist"
+	"github.com/robertlestak/smail/internal/smtpfallback"
 	"github.com/robertlestak/smail/pkg/address"
 	"github.com/robertlestak/smail/pkg/encrypt"
 
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	ErrSmailNotSupported = errors.New("smail not supported")
 )
 
 type Attachment struct {
@@ -101,6 +106,32 @@ func (m *Message) SpamCheck(r *http.Request) error {
 	return nil
 }
 
+func (m *RawMessage) CreateMessageWithPubKey(pubKey []byte) (*Message, error) {
+	l := log.WithFields(log.Fields{
+		"app": "smail",
+		"fn":  "CreateMessageWithPubKey",
+	})
+	l.Debug("starting")
+	l = l.WithField("toPubKey", pubKey)
+	l.Debug("pubkey retrieved")
+	m.Mailbox = "INBOX"
+	m.Time = time.Now()
+	encryptedMessage, err := m.Encrypt(pubKey)
+	if err != nil {
+		l.WithError(err).Error("failed to encrypt message")
+		return nil, err
+	}
+	l = l.WithField("encryptedMessage", encryptedMessage)
+	l.Debug("message encrypted")
+	msg := &Message{
+		Raw:              m,
+		EncryptedMessage: encryptedMessage,
+	}
+	l = l.WithField("message", msg)
+	l.Debug("message created")
+	return msg, nil
+}
+
 func (m *RawMessage) CreateMessage(endpoint string, toaddr string) (*Message, error) {
 	l := log.WithFields(log.Fields{
 		"app": "smail",
@@ -118,33 +149,50 @@ func (m *RawMessage) CreateMessage(endpoint string, toaddr string) (*Message, er
 	}
 	l = l.WithField("toPubKey", toPubKey)
 	l.Debug("pubkey retrieved")
-	m.Mailbox = "INBOX"
-	m.Time = time.Now()
-	encryptedMessage, err := m.Encrypt(toPubKey)
+	msg, err := m.CreateMessageWithPubKey(toPubKey)
 	if err != nil {
-		l.WithError(err).Error("failed to encrypt message")
+		l.WithError(err).Error("failed to create message")
 		return nil, err
 	}
-	l = l.WithField("encryptedMessage", encryptedMessage)
-	l.Debug("message encrypted")
-	msg := &Message{
-		Raw:              m,
-		EncryptedMessage: encryptedMessage,
-	}
-	if err := msg.CreateID(toaddr); err != nil {
+	msg.ToID = address.AddressID(toaddr)
+	if err := msg.CreateID(); err != nil {
 		l.WithError(err).Error("failed to create id")
 		return nil, err
 	}
-	l = l.WithField("message", msg)
-	l.Debug("message created")
 	return msg, nil
 }
 
-func (m *Message) CreateID(toaddr string) error {
+func (m *RawMessage) CreateMessageWithTemporaryKey(toaddr string) (*Message, error) {
+	l := log.WithFields(log.Fields{
+		"app": "smail",
+		"fn":  "CreateMessage",
+	})
+	l.Debug("starting")
+	if err := m.ValidateInputs(); err != nil {
+		l.WithError(err).Error("invalid inputs")
+		return nil, err
+	}
+	// TODO: implement temporary key
+	var toPubKey []byte
+	l = l.WithField("toPubKey", toPubKey)
+	l.Debug("pubkey retrieved")
+	msg, err := m.CreateMessageWithPubKey(toPubKey)
+	if err != nil {
+		l.WithError(err).Error("failed to create message")
+		return nil, err
+	}
+	msg.ToID = address.AddressID(toaddr)
+	if err := msg.CreateID(); err != nil {
+		l.WithError(err).Error("failed to create id")
+		return nil, err
+	}
+	return msg, nil
+}
+
+func (m *Message) CreateID() error {
 	h := sha512.New()
 	h.Write(m.EncryptedMessage)
 	m.ID = hex.EncodeToString(h.Sum(nil))
-	m.ToID = address.AddressID(toaddr)
 	return nil
 }
 
@@ -178,6 +226,28 @@ func (m *Message) Send(endpoint string) error {
 	if resp.StatusCode != http.StatusOK {
 		l.WithField("status", resp.StatusCode).Error("failed to send message")
 		return errors.New("failed to send message")
+	}
+	return nil
+}
+
+func (m *Message) SendWithSMTP() error {
+	l := log.WithFields(log.Fields{
+		"app": "smail",
+		"fn":  "SendWithSMTP",
+	})
+	l.Debug("starting")
+	l = l.WithField("message", m)
+	l.Debug("sending message")
+	em := &smtpfallback.Email{
+		From:    m.Raw.FromAddr,
+		To:      m.Raw.To,
+		Subject: "New encrypted smail message",
+		Body:    string(m.EncryptedMessage),
+	}
+	m.Raw = nil
+	if err := em.Send(); err != nil {
+		l.WithError(err).Error("failed to send mail with smtp")
+		return err
 	}
 	return nil
 }
@@ -277,6 +347,9 @@ func EndpointFromAddr(addr string, useDOH bool) (string, error) {
 	}
 	l = l.WithField("endpoint", endpoint)
 	l.Debug("endpoint retrieved")
+	if endpoint == "" {
+		return endpoint, ErrSmailNotSupported
+	}
 	return endpoint, nil
 }
 
@@ -296,14 +369,22 @@ func sendMessageWorker(jobs <-chan SendMessageJob, results chan<- error) {
 		l = l.WithField("job", j)
 		l.Debug("processing job")
 		endpoint, err := EndpointFromAddr(j.ToAddr, j.UseDOH)
-		if err != nil {
+		if err != nil && !smtpfallback.Enabled {
 			l.WithError(err).Error("failed to get endpoint from toaddr")
 			results <- err
 			continue
-		}
-		if endpoint == "" {
-			l.Error("no endpoint found")
-			results <- errors.New("no endpoint found")
+		} else if err != nil && smtpfallback.Enabled && err == ErrSmailNotSupported {
+			l.WithError(err).Error("failed to get endpoint from toaddr, falling back to smtp")
+			// branch to fallback to smtp
+			msg, err := j.RawMessage.CreateMessageWithTemporaryKey(j.ToAddr)
+			if err != nil {
+				results <- err
+				continue
+			}
+			if err := msg.SendWithSMTP(); err != nil {
+				results <- err
+				continue
+			}
 			continue
 		}
 		msg, err := j.RawMessage.CreateMessage(endpoint, j.ToAddr)
@@ -331,13 +412,6 @@ func (m *RawMessage) Send(useDOH bool) error {
 		"to":  m.To,
 	})
 	l.Debug("starting")
-	// ensure fromaddr is valid
-	// fromAddr, err := address.GetByAddr(m.FromAddr)
-	// if err != nil {
-	// 	l.WithError(err).Error("failed to get fromaddr")
-	// 	return err
-	// }
-	// l = l.WithField("fromAddr", fromAddr)
 	totalSend := len(m.To) + len(m.CC) + len(m.BCC)
 	l = l.WithField("totalSend", totalSend)
 	l.Debug("sending message")
@@ -442,13 +516,10 @@ func enpointFromDomain(domain string, useDOH bool) (string, error) {
 		if strings.HasPrefix(txt, "smail=") {
 			endpoint = strings.TrimSpace(strings.TrimPrefix(txt, "smail="))
 			l.Debugf("found smail endpoint: %v", endpoint)
-			break
+			return endpoint, nil
 		}
 	}
-	if endpoint == "" {
-		return "", errors.New("no endpoint found")
-	}
-	return endpoint, nil
+	return "", ErrSmailNotSupported
 }
 
 func GetRemotePubKey(endpoint string, addr string) ([]byte, error) {

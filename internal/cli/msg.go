@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robertlestak/smail/internal/smtpfallback"
 	"github.com/robertlestak/smail/pkg/address"
 	"github.com/robertlestak/smail/pkg/encrypt"
 	"github.com/robertlestak/smail/pkg/smail"
@@ -36,6 +37,16 @@ func cmdMsgNew() error {
 	privkeyPath := msgFlagSet.String("privkey-path", "", "path to the private key")
 	privkeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
+	smtpFallback := msgFlagSet.Bool("smtp-fallback", false, "fallback to SMTP if recipient does not support smail")
+	smtpFallbackHost := msgFlagSet.String("smtp-fallback-host", "", "host to fallback to if recipient does not support smail")
+	smtpFallbackPort := msgFlagSet.Int("smtp-fallback-port", 25, "port to fallback to if recipient does not support smail")
+	smtpFallbackUser := msgFlagSet.String("smtp-fallback-user", "", "username to use for fallback SMTP")
+	smtpFallbackPass := msgFlagSet.String("smtp-fallback-pass", "", "password to use for fallback SMTP")
+	smtpFallbackTlsEnable := msgFlagSet.Bool("smtp-fallback-tls", false, "enable TLS for fallback SMTP")
+	smtpFallbackTlsSkipVerify := msgFlagSet.Bool("smtp-fallback-tls-skip-verify", false, "skip TLS verification for fallback SMTP")
+	smtpFallbackTlsCaCertPath := msgFlagSet.String("smtp-fallback-tls-ca-cert-path", "", "path to CA certificate for fallback SMTP")
+	smtpFallbackTlsCertPath := msgFlagSet.String("smtp-fallback-tls-cert-path", "", "path to certificate for fallback SMTP")
+	smtpFallbackTlsKeyPath := msgFlagSet.String("smtp-fallback-tls-key-path", "", "path to key for fallback SMTP")
 	msgFlagSet.Parse(os.Args[3:])
 	l.WithFields(log.Fields{
 		"from":           *fromAddr,
@@ -59,6 +70,20 @@ func cmdMsgNew() error {
 	}
 	if *body == "" {
 		return errors.New("body is required")
+	}
+	if *smtpFallback {
+		smtpfallback.Enabled = true
+		smtpfallback.Cfg = &smtpfallback.Config{
+			Host:          *smtpFallbackHost,
+			Port:          *smtpFallbackPort,
+			User:          *smtpFallbackUser,
+			Pass:          *smtpFallbackPass,
+			TlsEnable:     *smtpFallbackTlsEnable,
+			TlsSkipVerify: *smtpFallbackTlsSkipVerify,
+			TlsCACert:     *smtpFallbackTlsCaCertPath,
+			TlsCert:       *smtpFallbackTlsCertPath,
+			TlsKey:        *smtpFallbackTlsKeyPath,
+		}
 	}
 	var privKeyBytes []byte
 	if *privkeyPath != "" {
@@ -115,7 +140,6 @@ func cmdMsgNew() error {
 		CC:          cc,
 		BCC:         bcc,
 		Attachments: attach,
-		Mailbox:     "INBOX",
 		Time:        time.Now(),
 	}
 	if err := rm.Send(*useDOH); err != nil {
