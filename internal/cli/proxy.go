@@ -33,11 +33,13 @@ func cmdProxy() error {
 	smtpFallbackPort := proxyCmd.Int("smtp-fallback-port", 25, "port to fallback to if recipient does not support smail")
 	smtpFallbackUser := proxyCmd.String("smtp-fallback-user", "", "username to use for fallback SMTP")
 	smtpFallbackPass := proxyCmd.String("smtp-fallback-pass", "", "password to use for fallback SMTP")
+	smtpFallbackEncrypt := proxyCmd.Bool("smtp-fallback-encrypt", true, "encrypt SMTP fallback message")
 	smtpFallbackTlsEnable := proxyCmd.Bool("smtp-fallback-tls", false, "enable TLS for fallback SMTP")
 	smtpFallbackTlsSkipVerify := proxyCmd.Bool("smtp-fallback-tls-skip-verify", false, "skip TLS verification for fallback SMTP")
 	smtpFallbackTlsCaCertPath := proxyCmd.String("smtp-fallback-tls-ca-cert-path", "", "path to CA certificate for fallback SMTP")
 	smtpFallbackTlsCertPath := proxyCmd.String("smtp-fallback-tls-cert-path", "", "path to certificate for fallback SMTP")
 	smtpFallbackTlsKeyPath := proxyCmd.String("smtp-fallback-tls-key-path", "", "path to key for fallback SMTP")
+	smtpFallbackKeyDir := proxyCmd.String("smtp-fallback-key-dir", "", "directory to store keys for fallback SMTP")
 	smtpAuthUsername := proxyCmd.String("smtp-user", "", "username for SMTP authentication")
 	smtpAuthPassword := proxyCmd.String("smtp-pass", "", "password for SMTP authentication")
 	smtpTlsCaPath := proxyCmd.String("smtp-tls-ca", "", "path to TLS CA for SMTP")
@@ -162,6 +164,11 @@ func cmdProxy() error {
 			TlsCACert:     *smtpFallbackTlsCaCertPath,
 			TlsCert:       *smtpFallbackTlsCertPath,
 			TlsKey:        *smtpFallbackTlsKeyPath,
+			KeyDir:        *smtpFallbackKeyDir,
+			Encrypt:       *smtpFallbackEncrypt,
+		}
+		if err := smtpfallback.InitKeyDir(); err != nil {
+			return err
 		}
 	}
 	select {}

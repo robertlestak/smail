@@ -38,10 +38,12 @@ func cmdMsgNew() error {
 	privkeyBase64 := msgFlagSet.String("privkey-base64", "", "base64 encoded private key")
 	useDOH := msgFlagSet.Bool("use-doh", false, "use DNS over HTTPS")
 	smtpFallback := msgFlagSet.Bool("smtp-fallback", false, "fallback to SMTP if recipient does not support smail")
+	smtpFallbackEncrypt := msgFlagSet.Bool("smtp-fallback-encrypt", true, "encrypt SMTP fallback message")
 	smtpFallbackHost := msgFlagSet.String("smtp-fallback-host", "", "host to fallback to if recipient does not support smail")
 	smtpFallbackPort := msgFlagSet.Int("smtp-fallback-port", 25, "port to fallback to if recipient does not support smail")
 	smtpFallbackUser := msgFlagSet.String("smtp-fallback-user", "", "username to use for fallback SMTP")
 	smtpFallbackPass := msgFlagSet.String("smtp-fallback-pass", "", "password to use for fallback SMTP")
+	smtpFallbackKeyDir := msgFlagSet.String("smtp-fallback-key-dir", "", "directory to store keys for fallback SMTP")
 	smtpFallbackTlsEnable := msgFlagSet.Bool("smtp-fallback-tls", false, "enable TLS for fallback SMTP")
 	smtpFallbackTlsSkipVerify := msgFlagSet.Bool("smtp-fallback-tls-skip-verify", false, "skip TLS verification for fallback SMTP")
 	smtpFallbackTlsCaCertPath := msgFlagSet.String("smtp-fallback-tls-ca-cert-path", "", "path to CA certificate for fallback SMTP")
@@ -83,6 +85,11 @@ func cmdMsgNew() error {
 			TlsCACert:     *smtpFallbackTlsCaCertPath,
 			TlsCert:       *smtpFallbackTlsCertPath,
 			TlsKey:        *smtpFallbackTlsKeyPath,
+			Encrypt:       *smtpFallbackEncrypt,
+			KeyDir:        *smtpFallbackKeyDir,
+		}
+		if err := smtpfallback.InitKeyDir(); err != nil {
+			return err
 		}
 	}
 	var privKeyBytes []byte

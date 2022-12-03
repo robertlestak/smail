@@ -235,6 +235,39 @@ func EncryptMessage(key, data []byte) (*string, error) {
 	return &mes, nil
 }
 
+func GenerateRSAKeyPair() ([]byte, []byte, error) {
+	l := log.WithFields(log.Fields{
+		"pkg": "keys",
+		"fn":  "GenerateRSAKeyPair",
+	})
+	l.Debug("Generating RSA key pair")
+	privatekey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		l.Error("Error generating RSA key pair")
+		return nil, nil, err
+	}
+	publickey := &privatekey.PublicKey
+	// dump private key to file
+	var privateKeyBytes []byte = x509.MarshalPKCS1PrivateKey(privatekey)
+	privateKeyBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyBytes,
+	}
+	privBytes := pem.EncodeToMemory(privateKeyBlock)
+	// dump public key to file
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(publickey)
+	if err != nil {
+		l.Error("Error marshalling public key")
+		return nil, nil, err
+	}
+	publicKeyBlock := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyBytes,
+	}
+	pubBytes := pem.EncodeToMemory(publicKeyBlock)
+	return privBytes, pubBytes, nil
+}
+
 func DecryptMessage(key []byte, data string) ([]byte, error) {
 	l := log.WithFields(log.Fields{
 		"pkg": "keys",

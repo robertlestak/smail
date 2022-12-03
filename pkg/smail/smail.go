@@ -162,7 +162,7 @@ func (m *RawMessage) CreateMessage(endpoint string, toaddr string) (*Message, er
 	return msg, nil
 }
 
-func (m *RawMessage) CreateMessageWithTemporaryKey(toaddr string) (*Message, error) {
+func (m *RawMessage) CreateMessageWithLocalKey(toaddr string) (*Message, error) {
 	l := log.WithFields(log.Fields{
 		"app": "smail",
 		"fn":  "CreateMessage",
@@ -172,8 +172,11 @@ func (m *RawMessage) CreateMessageWithTemporaryKey(toaddr string) (*Message, err
 		l.WithError(err).Error("invalid inputs")
 		return nil, err
 	}
-	// TODO: implement temporary key
-	var toPubKey []byte
+	toPubKey, err := smtpfallback.LocalPublicKeyForRemoteAddress(toaddr)
+	if err != nil {
+		l.WithError(err).Error("failed to get pubkey")
+		return nil, err
+	}
 	l = l.WithField("toPubKey", toPubKey)
 	l.Debug("pubkey retrieved")
 	msg, err := m.CreateMessageWithPubKey(toPubKey)
@@ -182,6 +185,29 @@ func (m *RawMessage) CreateMessageWithTemporaryKey(toaddr string) (*Message, err
 		return nil, err
 	}
 	msg.ToID = address.AddressID(toaddr)
+	if err := msg.CreateID(); err != nil {
+		l.WithError(err).Error("failed to create id")
+		return nil, err
+	}
+	return msg, nil
+}
+
+func (m *RawMessage) CreateRawMessage(toaddr string) (*Message, error) {
+	l := log.WithFields(log.Fields{
+		"app": "smail",
+		"fn":  "CreateRawMessage",
+	})
+	l.Debug("starting")
+	if err := m.ValidateInputs(); err != nil {
+		l.WithError(err).Error("invalid inputs")
+		return nil, err
+	}
+	m.Mailbox = "INBOX"
+	m.Time = time.Now()
+	msg := &Message{
+		ToID: address.AddressID(toaddr),
+		Raw:  m,
+	}
 	if err := msg.CreateID(); err != nil {
 		l.WithError(err).Error("failed to create id")
 		return nil, err
@@ -238,11 +264,20 @@ func (m *Message) SendWithSMTP() error {
 	l.Debug("starting")
 	l = l.WithField("message", m)
 	l.Debug("sending message")
+	var b string
+	var sub string
+	if len(m.EncryptedMessage) > 0 {
+		b = string(m.EncryptedMessage)
+		sub = "Encrypted Message"
+	} else {
+		b = m.Raw.Body
+		sub = m.Raw.Subject
+	}
 	em := &smtpfallback.Email{
 		From:    m.Raw.FromAddr,
 		To:      m.Raw.To,
-		Subject: "New encrypted smail message",
-		Body:    string(m.EncryptedMessage),
+		Subject: sub,
+		Body:    b,
 	}
 	m.Raw = nil
 	if err := em.Send(); err != nil {
@@ -369,17 +404,33 @@ func sendMessageWorker(jobs <-chan SendMessageJob, results chan<- error) {
 		l = l.WithField("job", j)
 		l.Debug("processing job")
 		endpoint, err := EndpointFromAddr(j.ToAddr, j.UseDOH)
+		l.WithFields(log.Fields{
+			"endpoint":        endpoint,
+			"err":             err,
+			"fallbackEnabled": smtpfallback.Enabled,
+		}).Debug("endpoint retrieved")
 		if err != nil && !smtpfallback.Enabled {
 			l.WithError(err).Error("failed to get endpoint from toaddr")
 			results <- err
 			continue
-		} else if err != nil && smtpfallback.Enabled && err == ErrSmailNotSupported {
-			l.WithError(err).Error("failed to get endpoint from toaddr, falling back to smtp")
+			//} else if smtpfallback.Enabled {
+		} else if err != nil && smtpfallback.Enabled {
+			l.WithError(err).Debug("failed to get endpoint from toaddr, falling back to smtp")
 			// branch to fallback to smtp
-			msg, err := j.RawMessage.CreateMessageWithTemporaryKey(j.ToAddr)
-			if err != nil {
-				results <- err
-				continue
+			var msg *Message
+			var err error
+			if smtpfallback.Cfg.Encrypt {
+				msg, err = j.RawMessage.CreateMessageWithLocalKey(j.ToAddr)
+				if err != nil {
+					results <- err
+					continue
+				}
+			} else {
+				msg, err = j.RawMessage.CreateRawMessage(j.ToAddr)
+				if err != nil {
+					results <- err
+					continue
+				}
 			}
 			if err := msg.SendWithSMTP(); err != nil {
 				results <- err
@@ -421,7 +472,7 @@ func (m *RawMessage) Send(useDOH bool) error {
 	if totalSend < workerCount {
 		workerCount = totalSend
 	}
-	for w := 1; w <= 10; w++ {
+	for w := 1; w <= workerCount; w++ {
 		go sendMessageWorker(jobs, results)
 	}
 	tm := m
