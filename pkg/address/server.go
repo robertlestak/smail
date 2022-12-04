@@ -62,27 +62,40 @@ func LoadServerPublicKey(k string) error {
 	return nil
 }
 
-func validateServerKey(r *http.Request) error {
+func RequestAuthenticated(r *http.Request, a *Address) bool {
 	l := log.WithFields(log.Fields{
 		"app": "address",
-		"fn":  "validateServerKey",
+		"fn":  "RequestAuthenticated",
 	})
 	l.Debug("starting")
 	sig, err := encrypt.ParseSignedRequest(r)
 	if err != nil {
 		l.WithError(err).Error("failed to parse signed request")
-		return err
+		return false
 	}
 	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
 	if err != nil {
 		l.WithError(err).Error("failed to convert bytes to public key")
-		return err
+		return false
 	}
-	if !sigPubKey.Equal(ServerPublicKey) {
-		l.Error("public key mismatch")
-		return errors.New("public key mismatch")
+	if a != nil {
+		// check if address owner
+		aPubKey, err := encrypt.BytesToPubKey(a.PubKey)
+		if err != nil {
+			l.WithError(err).Error("failed to convert bytes to public key")
+			return false
+		}
+		if sigPubKey.Equal(aPubKey) {
+			l.Debug("request is from address owner")
+			return true
+		}
 	}
-	return nil
+	// check if server admin
+	if sigPubKey.Equal(ServerPublicKey) {
+		l.Debug("request is from server admin")
+		return true
+	}
+	return false
 }
 
 func HandleListLocalAddresses(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +104,9 @@ func HandleListLocalAddresses(w http.ResponseWriter, r *http.Request) {
 		"fn":  "HandleListLocalAddresses",
 	})
 	l.Debug("starting")
-	if err := validateServerKey(r); err != nil {
-		l.Error("failed to validate server key")
-		w.WriteHeader(http.StatusBadRequest)
+	if !RequestAuthenticated(r, nil) {
+		l.Error("request not authenticated")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	page, pageSize := utils.PageAndPageSizeFromRequest(r)
@@ -116,9 +129,9 @@ func HandleCreateNewAddress(w http.ResponseWriter, r *http.Request) {
 		"fn":  "HandleCreateNewAddress",
 	})
 	l.Debug("starting")
-	if err := validateServerKey(r); err != nil {
-		l.Error("failed to validate server key")
-		w.WriteHeader(http.StatusBadRequest)
+	if !RequestAuthenticated(r, nil) {
+		l.Error("request not authenticated")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	var a *Address
@@ -147,33 +160,15 @@ func HandleDeleteAddressByID(w http.ResponseWriter, r *http.Request) {
 	l.Debug("starting")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sig, err := encrypt.ParseSignedRequest(r)
-	if err != nil {
-		l.WithError(err).Error("failed to parse signed request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
 	addr, err := GetByID(id)
 	if err != nil {
 		l.WithError(err).Error("failed to get address")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if !sigPubKey.Equal(aPubKey) {
-		l.Error("public key mismatch")
-		w.WriteHeader(http.StatusBadRequest)
+	if !RequestAuthenticated(r, addr) {
+		l.Error("request not authenticated")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	if err := DeleteLocalAddressByID(id); err != nil {
@@ -192,33 +187,15 @@ func HandleUpdateAddressPubKey(w http.ResponseWriter, r *http.Request) {
 	l.Debug("starting")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sig, err := encrypt.ParseSignedRequest(r)
-	if err != nil {
-		l.WithError(err).Error("failed to parse signed request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
 	addr, err := GetByID(id)
 	if err != nil {
 		l.WithError(err).Error("failed to get address")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if !sigPubKey.Equal(aPubKey) {
-		l.Error("public key mismatch")
-		w.WriteHeader(http.StatusBadRequest)
+	if !RequestAuthenticated(r, addr) {
+		l.Error("request not authenticated")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	var a *Address
@@ -261,102 +238,6 @@ func HandleGetByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func HandleLoadPrivKey(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{
-		"app": "address",
-		"fn":  "HandleLoadPrivKey",
-	})
-	l.Debug("starting")
-	var a *Address
-	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		l.WithError(err).Error("failed to decode json")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	vars := mux.Vars(r)
-	id := vars["id"]
-	if id == "" {
-		l.Error("id is required")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	sig, err := encrypt.ParseSignedRequest(r)
-	if err != nil {
-		l.WithError(err).Error("failed to parse signed request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	addr, err := GetByID(id)
-	if err != nil {
-		l.WithError(err).Error("failed to get address")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if !sigPubKey.Equal(aPubKey) {
-		l.Error("public key mismatch")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err := LoadPrivKey(id, a.PrivKey); err != nil {
-		l.WithError(err).Error("failed to load private key")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-}
-
-func HandleDeletePrivKeyByID(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{
-		"app": "address",
-		"fn":  "HandleDeletePrivKeyByID",
-	})
-	l.Debug("starting")
-	vars := mux.Vars(r)
-	id := vars["id"]
-	sig, err := encrypt.ParseSignedRequest(r)
-	if err != nil {
-		l.WithError(err).Error("failed to parse signed request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	addr, err := GetByID(id)
-	if err != nil {
-		l.WithError(err).Error("failed to get address")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if !sigPubKey.Equal(aPubKey) {
-		l.Error("public key mismatch")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	delete(PrivKeys, id)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func HandleGetBytesUsed(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{
 		"app": "address",
@@ -365,41 +246,16 @@ func HandleGetBytesUsed(w http.ResponseWriter, r *http.Request) {
 	l.Debug("starting")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	var authenticated bool
-	sig, err := encrypt.ParseSignedRequest(r)
-	if err != nil {
-		l.WithError(err).Error("failed to parse signed request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	sigPubKey, err := encrypt.BytesToPubKey(sig.PublicKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
 	addr, err := GetByID(id)
 	if err != nil {
 		l.WithError(err).Error("failed to get address")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	aPubKey, err := encrypt.BytesToPubKey(addr.PubKey)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		w.WriteHeader(http.StatusBadRequest)
+	if !RequestAuthenticated(r, addr) {
+		l.Error("request not authenticated")
+		w.WriteHeader(http.StatusUnauthorized)
 		return
-	}
-	if sigPubKey.Equal(aPubKey) {
-		l.Error("public key mismatch")
-	}
-	if !authenticated {
-		// if the caller is not the addr owner, check if it's the server admin
-		if err := validateServerKey(r); err != nil {
-			l.WithError(err).Error("failed to validate server key")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 	}
 	u, err := GetLocalBytesUsed(id)
 	if err != nil {
