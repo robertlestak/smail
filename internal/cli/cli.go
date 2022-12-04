@@ -7,6 +7,7 @@ import (
 
 	"github.com/robertlestak/smail/internal/server"
 	"github.com/robertlestak/smail/internal/smtp"
+	"github.com/robertlestak/smail/pkg/address"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -21,6 +22,7 @@ func cmdServer() error {
 	port := serverCmd.String("port", "8080", "port to listen on")
 	tlsCrtPath := serverCmd.String("tls-crt", "", "path to TLS certificate")
 	tlsKeyPath := serverCmd.String("tls-key", "", "path to TLS key")
+	publicKeyPath := serverCmd.String("public-key", "", "path to public key")
 	enableSmtpPlain := serverCmd.Bool("smtp-plain", false, "enable plain text SMTP server")
 	enableSmtpTls := serverCmd.Bool("smtp-tls", false, "enable TLS SMTP server")
 	smtpPort := serverCmd.String("smtp-port", "2525", "port to listen on for SMTP")
@@ -35,6 +37,10 @@ func cmdServer() error {
 	smtpAllowInsecureAuth := serverCmd.Bool("smtp-allow-insecure-auth", false, "allow insecure authentication for SMTP")
 	serverCmd.Parse(os.Args[2:])
 	go func() {
+		if err := address.LoadServerPublicKey(*publicKeyPath); err != nil {
+			l.WithError(err).Error("failed to load public key")
+			os.Exit(1)
+		}
 		if err := server.Start(*serverAddr, *port, *tlsCrtPath, *tlsKeyPath); err != nil {
 			l.WithError(err).Fatal("server failed")
 		}

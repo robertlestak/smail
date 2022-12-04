@@ -20,13 +20,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func cmdMsgNew() error {
+func cmdMsgSend() error {
 	l := log.WithFields(log.Fields{
 		"app": "cli",
-		"fn":  "cmdMsgNew",
+		"fn":  "cmdMsgSend",
 	})
 	l.Debug("starting")
-	msgFlagSet := flag.NewFlagSet("msg", flag.ExitOnError)
+	msgFlagSet := flag.NewFlagSet("send", flag.ExitOnError)
 	fromAddr := msgFlagSet.String("from", "", "from address")
 	toStr := msgFlagSet.String("to", "", "to addresses")
 	ccStr := msgFlagSet.String("cc", "", "cc addresses")
@@ -177,7 +177,7 @@ func cmdMsgList() error {
 		"fn":  "cmdMsgList",
 	})
 	l.Debug("starting")
-	msgFlagSet := flag.NewFlagSet("msg", flag.ExitOnError)
+	msgFlagSet := flag.NewFlagSet("list", flag.ExitOnError)
 	addr := msgFlagSet.String("addr", "", "address")
 	server := msgFlagSet.String("server", "", "server")
 	serverProto := msgFlagSet.String("server-proto", "https", "server protocol")
@@ -701,8 +701,8 @@ func cmdMsg() error {
 		arg = os.Args[2]
 	}
 	switch arg {
-	case "new":
-		return cmdMsgNew()
+	case "send":
+		return cmdMsgSend()
 	case "list":
 		return cmdMsgList()
 	case "list-keys":

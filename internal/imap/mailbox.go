@@ -166,9 +166,21 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 	l := log.WithFields(log.Fields{
 		"package": "imap",
 		"fn":      "ListMessages",
+		"uid":     uid,
+		"seqSet":  seqSet,
 	})
 	l.Debug("called")
 	defer close(ch)
+	mex, err := mbox.user.CurrentMessageIDs()
+	if err != nil {
+		return err
+	}
+	l.WithFields(log.Fields{
+		"mex": mex,
+	}).Debug("mex")
+	if err := mbox.user.GetNewMailMessages(mex); err != nil {
+		return err
+	}
 
 	for i, msg := range mbox.Messages {
 		seqNum := uint32(i + 1)
@@ -176,13 +188,19 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 		var id uint32
 		if uid {
 			id = msg.Uid
+			l = l.WithField("uid", id)
+			l.Debug("uid")
 		} else {
 			id = seqNum
+			l = l.WithField("seqNum", id)
+			l.Debug("seqNum")
 		}
+		l.Debug("processing message")
 		if !seqSet.Contains(id) {
+			l.Debug("skipping message")
 			continue
 		}
-
+		l.Debug("adding message to channel")
 		m, err := msg.Fetch(seqNum, items)
 		if err != nil {
 			continue

@@ -2,9 +2,11 @@ package address
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,6 +16,51 @@ import (
 	"github.com/robertlestak/smail/pkg/encrypt"
 	log "github.com/sirupsen/logrus"
 )
+
+var (
+	ServerPublicKey *rsa.PublicKey
+)
+
+func LoadServerPublicKey(k string) error {
+	l := log.WithFields(log.Fields{
+		"app": "address",
+		"fn":  "LoadServerPublicKey",
+	})
+	l.Debug("starting")
+	if k != "" {
+		fd, err := ioutil.ReadFile(k)
+		if err != nil {
+			l.WithError(err).Error("failed to read public key")
+			return err
+		}
+		ServerPublicKey, err = encrypt.BytesToPubKey(fd)
+		if err != nil {
+			l.WithError(err).Error("failed to convert bytes to public key")
+			return err
+		}
+	} else {
+		k = os.Getenv("SERVER_PUBLIC_KEY_BASE64")
+		if k == "" {
+			return errors.New("no server public key provided")
+		}
+		bd, err := base64.StdEncoding.DecodeString(k)
+		if err != nil {
+			l.WithError(err).Error("failed to decode server public key")
+			return err
+		}
+		serverPubKey, err := encrypt.BytesToPubKey(bd)
+		if err != nil {
+			l.WithError(err).Error("failed to convert bytes to public key")
+			return err
+		}
+		ServerPublicKey = serverPubKey
+	}
+	if ServerPublicKey == nil {
+		l.Error("server public key is nil")
+		return errors.New("server public key is nil")
+	}
+	return nil
+}
 
 func validateServerKey(r *http.Request) error {
 	l := log.WithFields(log.Fields{
@@ -31,17 +78,7 @@ func validateServerKey(r *http.Request) error {
 		l.WithError(err).Error("failed to convert bytes to public key")
 		return err
 	}
-	bd, err := base64.StdEncoding.DecodeString(os.Getenv("SERVER_PUBLIC_KEY_BASE64"))
-	if err != nil {
-		l.WithError(err).Error("failed to decode server public key")
-		return err
-	}
-	serverPubKey, err := encrypt.BytesToPubKey(bd)
-	if err != nil {
-		l.WithError(err).Error("failed to convert bytes to public key")
-		return err
-	}
-	if !sigPubKey.Equal(serverPubKey) {
+	if !sigPubKey.Equal(ServerPublicKey) {
 		l.Error("public key mismatch")
 		return errors.New("public key mismatch")
 	}
