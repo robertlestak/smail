@@ -237,7 +237,7 @@ func (m *Message) Send(endpoint string) error {
 		l.WithError(err).Error("failed to marshal message")
 		return err
 	}
-	req, err := http.NewRequest("POST", endpoint+"/message/store", bytes.NewBuffer(jd))
+	req, err := http.NewRequest("POST", endpoint+"/message", bytes.NewBuffer(jd))
 	if err != nil {
 		l.WithError(err).Error("failed to create request")
 		return err

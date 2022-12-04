@@ -26,7 +26,7 @@ func Start(addr, port, tlsCrtPath, tlsKeyPath string) error {
 	r := mux.NewRouter()
 	// Public Routes
 	r.HandleFunc("/address/{id}", address.HandleGetByID).Methods("GET")
-	r.HandleFunc("/message/store", smail.HandleStoreNewMessage).Methods("POST")
+	r.HandleFunc("/message", smail.HandleStoreNewMessage).Methods("POST")
 	r.HandleFunc("/health", handlehealthcheck).Methods("GET")
 
 	// Address-wide Internal Routes
@@ -34,8 +34,6 @@ func Start(addr, port, tlsCrtPath, tlsKeyPath string) error {
 	r.HandleFunc("/address", address.HandleCreateNewAddress).Methods("POST")
 
 	// Address-Authenticated Internal Routes
-	//r.HandleFunc("/address/{id}/key", address.HandleLoadPrivKey).Methods("POST")
-	//r.HandleFunc("/address/{id}/key", address.HandleDeletePrivKeyByID).Methods("DELETE")
 	r.HandleFunc("/address/{id}/bytes", address.HandleGetBytesUsed).Methods("GET")
 	r.HandleFunc("/address/{id}", address.HandleDeleteAddressByID).Methods("DELETE")
 	r.HandleFunc("/address/{id}/pubkey", address.HandleUpdateAddressPubKey).Methods("PUT")
