@@ -365,6 +365,7 @@ func HandleGetBytesUsed(w http.ResponseWriter, r *http.Request) {
 	l.Debug("starting")
 	vars := mux.Vars(r)
 	id := vars["id"]
+	var authenticated bool
 	sig, err := encrypt.ParseSignedRequest(r)
 	if err != nil {
 		l.WithError(err).Error("failed to parse signed request")
@@ -389,10 +390,16 @@ func HandleGetBytesUsed(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if !sigPubKey.Equal(aPubKey) {
+	if sigPubKey.Equal(aPubKey) {
 		l.Error("public key mismatch")
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	}
+	if !authenticated {
+		// if the caller is not the addr owner, check if it's the server admin
+		if err := validateServerKey(r); err != nil {
+			l.WithError(err).Error("failed to validate server key")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 	u, err := GetLocalBytesUsed(id)
 	if err != nil {

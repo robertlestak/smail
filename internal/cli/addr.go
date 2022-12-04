@@ -400,6 +400,9 @@ func cmdAddrUsage() error {
 	if err != nil {
 		return err
 	}
+	if resp.StatusCode != 200 {
+		return errors.New("failed to get usage: " + string(body))
+	}
 	var res int64
 	err = json.Unmarshal(body, &res)
 	if err != nil {
