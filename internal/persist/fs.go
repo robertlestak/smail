@@ -2,6 +2,7 @@ package persist
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 
@@ -26,8 +27,8 @@ func (d *FS) Init() error {
 		"fn":  "Init",
 	})
 	l.Debug("starting")
-	if os.Getenv("DATA_DIR") != "" {
-		d.DataDir = os.Getenv("DATA_DIR")
+	if d.DataDir == "" {
+		return fmt.Errorf("data dir not set")
 	}
 	// ensure the data dir exists
 	if _, err := os.Stat(d.DataDir); os.IsNotExist(err) {

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/robertlestak/smail/internal/persist"
 	"github.com/robertlestak/smail/internal/server"
 	"github.com/robertlestak/smail/internal/smtp"
 	"github.com/robertlestak/smail/pkg/address"
@@ -35,7 +36,32 @@ func cmdServer() error {
 	smtpTlsCrtPath := serverCmd.String("smtp-tls-crt", "", "path to TLS certificate for SMTP")
 	smtpTlsKeyPath := serverCmd.String("smtp-tls-key", "", "path to TLS key for SMTP")
 	smtpAllowInsecureAuth := serverCmd.Bool("smtp-allow-insecure-auth", false, "allow insecure authentication for SMTP")
+	persistDriver := serverCmd.String("persist-driver", "fs", "database driver to use")
+	persistFSDataDir := serverCmd.String("persist-fs-data-dir", "", "path to data directory for fs driver")
 	serverCmd.Parse(os.Args[2:])
+	// init persistence
+	dn := persist.DriverName(*persistDriver)
+	if dn == "" && os.Getenv("PERSIST_DRIVER") != "" {
+		dn = persist.DriverName(os.Getenv("PERSIST_DRIVER"))
+	}
+	d, err := persist.LoadDriver(dn)
+	if err != nil {
+		return err
+	}
+	switch dn {
+	case persist.DriverFS:
+		if *persistFSDataDir == "" && os.Getenv("PERSIST_FS_DATA_DIR") != "" {
+			*persistFSDataDir = os.Getenv("PERSIST_FS_DATA_DIR")
+		}
+		if *persistFSDataDir == "" {
+			return errors.New("data directory must be specified for fs driver")
+		}
+		d.(*persist.FS).DataDir = *persistFSDataDir
+	}
+	if err := d.Init(); err != nil {
+		return err
+	}
+	// init server
 	go func() {
 		if err := address.LoadServerPublicKey(*publicKeyPath); err != nil {
 			l.WithError(err).Error("failed to load public key")
@@ -45,6 +71,7 @@ func cmdServer() error {
 			l.WithError(err).Fatal("server failed")
 		}
 	}()
+	// init smtp
 	if *enableSmtpTls {
 		go func() {
 			if err := smtp.Start(

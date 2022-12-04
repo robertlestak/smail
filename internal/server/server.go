@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/robertlestak/smail/internal/persist"
 	"github.com/robertlestak/smail/pkg/address"
 	"github.com/robertlestak/smail/pkg/smail"
 	"github.com/rs/cors"
@@ -24,17 +23,6 @@ func Start(addr, port, tlsCrtPath, tlsKeyPath string) error {
 		"fn":  "Start",
 	})
 	l.Debug("starting")
-	dn := persist.DriverFS
-	if os.Getenv("PERSIST_DRIVER") != "" {
-		dn = persist.DriverName(os.Getenv("PERSIST_DRIVER"))
-	}
-	d, err := persist.LoadDriver(dn)
-	if err != nil {
-		return err
-	}
-	if err := d.Init(); err != nil {
-		return err
-	}
 	r := mux.NewRouter()
 	// Public Routes
 	r.HandleFunc("/address/{id}", address.HandleGetByID).Methods("GET")
